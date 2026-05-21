@@ -1043,17 +1043,13 @@ function InstructorManager() {
 
 function StudentManager() {
   const [list, setList] = useState<any[]>([])
-  const [instructors, setInstructors] = useState<any[]>([])
-  const [form, setForm] = useState({ name: '', phone: '', instructor_id: '' })
+  const [form, setForm] = useState({ name: '', phone: '' })
   const [adding, setAdding] = useState(false)
   const [open, setOpen] = useState(false)
 
   async function load() {
-    const [{ data: s }, { data: i }] = await Promise.all([
-      supabase.from('students').select('*, instructor:instructors(name)').order('name'),
-      supabase.from('instructors').select('id, name').eq('is_active', true).order('name'),
-    ])
-    setList(s || []); setInstructors(i || [])
+    const { data } = await supabase.from('students').select('*').order('name')
+    setList(data || [])
   }
   useEffect(() => { load() }, [])
 
@@ -1061,11 +1057,10 @@ function StudentManager() {
     if (!form.name) { alert('이름을 입력해주세요.'); return }
     setAdding(true)
     const { error } = await supabase.from('students').insert({
-      name: form.name, phone: form.phone,
-      instructor_id: form.instructor_id || null, is_active: true,
+      name: form.name, phone: form.phone, instructor_id: null, is_active: true,
     })
     if (error) { alert('오류: ' + error.message); setAdding(false); return }
-    setForm({ name: '', phone: '', instructor_id: '' }); setOpen(false); setAdding(false); load()
+    setForm({ name: '', phone: '' }); setOpen(false); setAdding(false); load()
   }
 
   async function toggleActive(id: string, current: boolean) {
@@ -1088,12 +1083,6 @@ function StudentManager() {
           <input placeholder="전화번호" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
             className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
             style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-          <CustomSelect
-            value={form.instructor_id}
-            onChange={v => setForm(f => ({ ...f, instructor_id: v }))}
-            placeholder="담당 강사 (선택사항)"
-            options={instructors.map(i => ({ value: i.id, label: i.name }))}
-          />
           <button onClick={add} disabled={adding}
             className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50"
             style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff' }}>
@@ -1106,7 +1095,7 @@ function StudentManager() {
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
           <div>
             <p className="text-white font-semibold">{s.name}</p>
-            <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{s.instructor?.name} · {s.phone}</p>
+            {s.phone && <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{s.phone}</p>}
           </div>
           <button onClick={() => toggleActive(s.id, s.is_active)}
             className="text-xs px-2 py-1 rounded-lg"

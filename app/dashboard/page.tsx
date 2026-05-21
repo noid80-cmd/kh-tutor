@@ -47,6 +47,86 @@ function CustomSelect({ value, onChange, options, placeholder }: {
   )
 }
 
+function SubjectSelect({ value, onChange, instructorId }: {
+  value: string; onChange: (v: string) => void; instructorId: string
+}) {
+  const [subjects, setSubjects] = useState<string[]>([])
+  const [open, setOpen] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [newSubject, setNewSubject] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!instructorId) { setSubjects([]); return }
+    supabase.from('lesson_schedules').select('subject_name')
+      .eq('instructor_id', instructorId).not('subject_name', 'is', null)
+      .then(({ data }) => {
+        const unique = [...new Set((data || []).map((r: any) => r.subject_name).filter(Boolean))] as string[]
+        setSubjects(unique)
+      })
+  }, [instructorId])
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setAdding(false) }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  function confirmNew() {
+    const t = newSubject.trim()
+    if (!t) return
+    onChange(t)
+    if (!subjects.includes(t)) setSubjects(prev => [...prev, t])
+    setNewSubject(''); setAdding(false); setOpen(false)
+  }
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full rounded-xl px-4 py-3 text-sm text-left flex items-center justify-between"
+        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', color: value ? '#fff' : 'rgba(255,255,255,0.35)' }}>
+        <span>{value || '과목명 선택 *'}</span>
+        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden"
+          style={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+          {subjects.length === 0 && !adding && (
+            <p className="px-4 py-3 text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>아직 등록된 과목이 없어요</p>
+          )}
+          {subjects.map(s => (
+            <button key={s} type="button" onClick={() => { onChange(s); setOpen(false) }}
+              className="w-full px-4 py-3 text-sm text-left"
+              style={{ color: s === value ? '#a5b4fc' : 'rgba(255,255,255,0.75)', background: s === value ? 'rgba(99,102,241,0.15)' : 'transparent' }}>
+              {s}
+            </button>
+          ))}
+          {adding ? (
+            <div className="px-3 py-2 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <input autoFocus value={newSubject} onChange={e => setNewSubject(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && confirmNew()}
+                placeholder="과목명 입력 후 Enter"
+                className="flex-1 rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(99,102,241,0.3)' }} />
+              <button type="button" onClick={confirmNew}
+                className="px-3 py-2 rounded-lg text-xs font-bold"
+                style={{ background: 'rgba(99,102,241,0.3)', color: '#a5b4fc' }}>확인</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setAdding(true)}
+              className="w-full px-4 py-3 text-sm text-left font-semibold"
+              style={{ color: '#818cf8', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              + 과목 추가
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const ADMIN_EMAILS = ['noid80@hanmail.net']
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토']
 const LESSON_TYPES = ['입시반', '오디션반', '부전공', '전문반', '취미반', '단체수업'] as const
@@ -80,9 +160,10 @@ async function generateLessons(weeksAhead = 8) {
       if (!existing) {
         await supabase.from('lessons').insert({
           schedule_id: sc.id, instructor_id: sc.instructor_id,
-          student_id: sc.student_id, date: dateStr,
+          student_id: sc.student_id ?? null, date: dateStr,
           start_time: sc.start_time, duration_minutes: sc.duration_minutes,
           lesson_type: sc.lesson_type ?? '취미반',
+          subject_name: sc.subject_name ?? null,
           status: 'scheduled', is_makeup: false,
         })
         created++
@@ -262,7 +343,8 @@ function TodayView({ isAdmin, instructor }: { isAdmin: boolean; instructor: Inst
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-white font-bold text-base">{l.student?.name}</span>
+                <span className="text-white font-bold text-base">{l.student?.name ?? '단체수업'}</span>
+                {l.subject_name && <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>{l.subject_name}</span>}
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
                   style={{ background: 'rgba(255,255,255,0.07)', color: statusColor(l.status) }}>
                   {statusLabel(l.status)}
@@ -460,7 +542,8 @@ function ScheduleView({ isAdmin, instructor }: { isAdmin: boolean; instructor: I
                     style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-white font-semibold text-sm">{l.student?.name}</span>
+                        <span className="text-white font-semibold text-sm">{l.student?.name ?? '단체수업'}</span>
+                        {l.subject_name && <span className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>{l.subject_name}</span>}
                         {isAdmin && <span className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>{l.instructor?.name}</span>}
                         {l.lesson_type && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc' }}>{l.lesson_type}</span>}
                         {l.is_makeup && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(253,230,138,0.15)', color: '#fde68a' }}>보강</span>}
@@ -487,7 +570,7 @@ function ScheduleView({ isAdmin, instructor }: { isAdmin: boolean; instructor: I
 function MakeupForm({ onDone }: { onDone: () => void }) {
   const [students, setStudents] = useState<any[]>([])
   const [instructors, setInstructors] = useState<any[]>([])
-  const [form, setForm] = useState({ student_id: '', instructor_id: '', date: '', start_time: '', duration_minutes: '60', lesson_type: '취미반' })
+  const [form, setForm] = useState({ student_id: '', instructor_id: '', date: '', start_time: '', duration_minutes: '60', lesson_type: '취미반', subject_name: '' })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -503,10 +586,10 @@ function MakeupForm({ onDone }: { onDone: () => void }) {
     }
     setSaving(true)
     const { error } = await supabase.from('lessons').insert({
-      instructor_id: form.instructor_id, student_id: form.student_id,
+      instructor_id: form.instructor_id, student_id: form.student_id || null,
       date: form.date, start_time: form.start_time,
       duration_minutes: Number(form.duration_minutes),
-      lesson_type: form.lesson_type,
+      lesson_type: form.lesson_type, subject_name: form.subject_name || null,
       status: 'scheduled', is_makeup: true,
     })
     setSaving(false)
@@ -525,9 +608,14 @@ function MakeupForm({ onDone }: { onDone: () => void }) {
       />
       <CustomSelect
         value={form.instructor_id}
-        onChange={v => setForm(f => ({ ...f, instructor_id: v }))}
+        onChange={v => setForm(f => ({ ...f, instructor_id: v, subject_name: '' }))}
         placeholder="강사 선택 *"
         options={instructors.map(i => ({ value: i.id, label: i.name }))}
+      />
+      <SubjectSelect
+        value={form.subject_name}
+        onChange={v => setForm(f => ({ ...f, subject_name: v }))}
+        instructorId={form.instructor_id}
       />
       <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
         className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
@@ -1035,7 +1123,7 @@ function ScheduleManager() {
   const [list, setList] = useState<any[]>([])
   const [students, setStudents] = useState<any[]>([])
   const [instructors, setInstructors] = useState<any[]>([])
-  const [form, setForm] = useState({ student_id: '', instructor_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '', lesson_type: '취미반' })
+  const [form, setForm] = useState({ student_id: '', instructor_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '', lesson_type: '취미반', subject_name: '' })
   const [adding, setAdding] = useState(false)
   const [open, setOpen] = useState(false)
 
@@ -1054,14 +1142,16 @@ function ScheduleManager() {
       alert('학생, 강사, 시간, 시작일을 입력해주세요.'); return
     }
     setAdding(true)
+    const isGroup = form.lesson_type === '단체수업'
     const { error } = await supabase.from('lesson_schedules').insert({
-      student_id: form.student_id, instructor_id: form.instructor_id,
+      student_id: isGroup ? null : (form.student_id || null),
+      instructor_id: form.instructor_id,
       day_of_week: Number(form.day_of_week), start_time: form.start_time,
       duration_minutes: Number(form.duration_minutes), start_date: form.start_date,
-      lesson_type: form.lesson_type, is_active: true,
+      lesson_type: form.lesson_type, subject_name: form.subject_name || null, is_active: true,
     })
     if (error) { alert('오류: ' + error.message); setAdding(false); return }
-    setForm({ student_id: '', instructor_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '', lesson_type: '취미반' })
+    setForm({ student_id: '', instructor_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '', lesson_type: '취미반', subject_name: '' })
     setOpen(false); setAdding(false); load()
   }
 
@@ -1081,16 +1171,29 @@ function ScheduleManager() {
       {open && (
         <div className="px-5 py-4 rounded-2xl space-y-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
           <CustomSelect
-            value={form.student_id}
-            onChange={v => setForm(f => ({ ...f, student_id: v }))}
-            placeholder="학생 선택 *"
-            options={students.map(s => ({ value: s.id, label: s.name }))}
+            value={form.lesson_type}
+            onChange={v => setForm(f => ({ ...f, lesson_type: v, student_id: '', subject_name: '' }))}
+            placeholder="수업 종류 선택"
+            options={LESSON_TYPES.map(t => ({ value: t, label: t === '단체수업' ? '단체수업' : `개인레슨 (${t})` }))}
           />
+          {form.lesson_type !== '단체수업' && (
+            <CustomSelect
+              value={form.student_id}
+              onChange={v => setForm(f => ({ ...f, student_id: v }))}
+              placeholder="학생 선택 *"
+              options={students.map(s => ({ value: s.id, label: s.name }))}
+            />
+          )}
           <CustomSelect
             value={form.instructor_id}
-            onChange={v => setForm(f => ({ ...f, instructor_id: v }))}
+            onChange={v => setForm(f => ({ ...f, instructor_id: v, subject_name: '' }))}
             placeholder="강사 선택 *"
             options={instructors.map(i => ({ value: i.id, label: i.name }))}
+          />
+          <SubjectSelect
+            value={form.subject_name}
+            onChange={v => setForm(f => ({ ...f, subject_name: v }))}
+            instructorId={form.instructor_id}
           />
           <CustomSelect
             value={form.day_of_week}
@@ -1130,7 +1233,7 @@ function ScheduleManager() {
           <div>
             <p className="text-white font-semibold">{sc.student?.name}</p>
             <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              {DAY_NAMES[sc.day_of_week]}요일 {sc.start_time?.slice(0, 5)} · {sc.duration_minutes}분 · {sc.lesson_type ?? '취미반'} · {sc.instructor?.name}
+              {DAY_NAMES[sc.day_of_week]}요일 {sc.start_time?.slice(0, 5)} · {sc.duration_minutes}분 · {sc.lesson_type ?? '취미반'}{sc.subject_name ? ` · ${sc.subject_name}` : ''} · {sc.instructor?.name}
             </p>
           </div>
           <button onClick={() => deactivate(sc.id)}

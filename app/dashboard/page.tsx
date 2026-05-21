@@ -1043,7 +1043,7 @@ function InstructorManager() {
 
 function StudentManager() {
   const [list, setList] = useState<any[]>([])
-  const [form, setForm] = useState({ name: '', phone: '' })
+  const [form, setForm] = useState({ name: '', phone: '', student_type: '' })
   const [adding, setAdding] = useState(false)
   const [open, setOpen] = useState(false)
 
@@ -1057,10 +1057,10 @@ function StudentManager() {
     if (!form.name) { alert('이름을 입력해주세요.'); return }
     setAdding(true)
     const { error } = await supabase.from('students').insert({
-      name: form.name, phone: form.phone, instructor_id: null, is_active: true,
+      name: form.name, phone: form.phone, student_type: form.student_type || null, instructor_id: null, is_active: true,
     })
     if (error) { alert('오류: ' + error.message); setAdding(false); return }
-    setForm({ name: '', phone: '' }); setOpen(false); setAdding(false); load()
+    setForm({ name: '', phone: '', student_type: '' }); setOpen(false); setAdding(false); load()
   }
 
   async function toggleActive(id: string, current: boolean) {
@@ -1083,6 +1083,12 @@ function StudentManager() {
           <input placeholder="전화번호" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
             className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
             style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
+          <CustomSelect
+            value={form.student_type}
+            onChange={v => setForm(f => ({ ...f, student_type: v }))}
+            placeholder="반 선택 (선택사항)"
+            options={['입시반', '오디션반', '전문반', '취미반'].map(t => ({ value: t, label: t }))}
+          />
           <button onClick={add} disabled={adding}
             className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50"
             style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff' }}>
@@ -1094,7 +1100,10 @@ function StudentManager() {
         <div key={s.id} className="px-5 py-4 rounded-2xl flex items-center justify-between"
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
           <div>
-            <p className="text-white font-semibold">{s.name}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-white font-semibold">{s.name}</p>
+              {s.student_type && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}>{s.student_type}</span>}
+            </div>
             {s.phone && <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{s.phone}</p>}
           </div>
           <button onClick={() => toggleActive(s.id, s.is_active)}

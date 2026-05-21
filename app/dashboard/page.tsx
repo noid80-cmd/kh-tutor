@@ -6,6 +6,8 @@ import type { Instructor } from '@/lib/supabase'
 
 const ADMIN_EMAILS = ['noid80@hanmail.net']
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토']
+const LESSON_TYPES = ['입시반', '오디션반', '부전공', '전문반', '취미반', '단체수업'] as const
+type LessonType = typeof LESSON_TYPES[number]
 
 type Tab = 'today' | 'schedule' | 'reports' | 'notify' | 'payroll' | 'manage'
 
@@ -37,6 +39,7 @@ async function generateLessons(weeksAhead = 8) {
           schedule_id: sc.id, instructor_id: sc.instructor_id,
           student_id: sc.student_id, date: dateStr,
           start_time: sc.start_time, duration_minutes: sc.duration_minutes,
+          lesson_type: sc.lesson_type ?? '취미반',
           status: 'scheduled', is_makeup: false,
         })
         created++
@@ -215,12 +218,13 @@ function TodayView({ isAdmin, instructor }: { isAdmin: boolean; instructor: Inst
           <div key={l.id} className="px-5 py-4 rounded-2xl space-y-3"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-white font-bold text-base">{l.student?.name}</span>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
                   style={{ background: 'rgba(255,255,255,0.07)', color: statusColor(l.status) }}>
                   {statusLabel(l.status)}
                 </span>
+                {l.lesson_type && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}>{l.lesson_type}</span>}
                 {l.is_makeup && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(253,230,138,0.15)', color: '#fde68a' }}>보강</span>}
               </div>
               <span className="text-sm font-bold" style={{ color: 'rgba(255,255,255,0.6)' }}>{l.start_time?.slice(0, 5)}</span>
@@ -412,9 +416,10 @@ function ScheduleView({ isAdmin, instructor }: { isAdmin: boolean; instructor: I
                   <div key={l.id} className="px-4 py-3 rounded-xl flex items-center justify-between"
                     style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-white font-semibold text-sm">{l.student?.name}</span>
                         {isAdmin && <span className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>{l.instructor?.name}</span>}
+                        {l.lesson_type && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc' }}>{l.lesson_type}</span>}
                         {l.is_makeup && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(253,230,138,0.15)', color: '#fde68a' }}>보강</span>}
                         {l.status === 'completed' && <span className="text-[10px]" style={{ color: '#6ee7b7' }}>✓</span>}
                       </div>
@@ -438,7 +443,7 @@ function ScheduleView({ isAdmin, instructor }: { isAdmin: boolean; instructor: I
 
 function MakeupForm({ onDone }: { onDone: () => void }) {
   const [students, setStudents] = useState<any[]>([])
-  const [form, setForm] = useState({ student_id: '', date: '', start_time: '', duration_minutes: '60' })
+  const [form, setForm] = useState({ student_id: '', date: '', start_time: '', duration_minutes: '60', lesson_type: '취미반' })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -454,6 +459,7 @@ function MakeupForm({ onDone }: { onDone: () => void }) {
       instructor_id: student.instructor_id, student_id: form.student_id,
       date: form.date, start_time: form.start_time,
       duration_minutes: Number(form.duration_minutes),
+      lesson_type: form.lesson_type,
       status: 'scheduled', is_makeup: true,
     })
     setSaving(false)
@@ -480,6 +486,11 @@ function MakeupForm({ onDone }: { onDone: () => void }) {
         className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
         style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
         {[30, 45, 60, 90, 120].map(m => <option key={m} value={m}>{m}분</option>)}
+      </select>
+      <select value={form.lesson_type} onChange={e => setForm(f => ({ ...f, lesson_type: e.target.value }))}
+        className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
+        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
+        {LESSON_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
       </select>
       <div className="flex gap-2">
         <button onClick={onDone} className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
@@ -663,29 +674,46 @@ function NotifyView() {
 // ── 급여 ──────────────────────────────────────────────
 function PayrollView() {
   const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7))
-  const [data, setData] = useState<{ instructor: any; count: number; amount: number }[]>([])
+  const [data, setData] = useState<{ instructorId: string; name: string; breakdown: { type: string; count: number; rate: number }[]; total: number }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setLoading(true)
-    supabase.from('class_reports')
-      .select('instructor_id, instructor:instructors(name, rate_per_lesson)')
-      .not('admin_approved_at', 'is', null)
-      .gte('date', month + '-01').lte('date', month + '-31')
-      .then(({ data: rows }) => {
-        const map: Record<string, { instructor: any; count: number }> = {}
-        ;(rows || []).forEach((r: any) => {
-          if (!map[r.instructor_id]) map[r.instructor_id] = { instructor: r.instructor, count: 0 }
-          map[r.instructor_id].count++
-        })
-        setData(Object.values(map).map(({ instructor, count }) => ({
-          instructor, count, amount: count * (instructor?.rate_per_lesson ?? 0),
-        })).sort((a, b) => b.amount - a.amount))
-        setLoading(false)
+    Promise.all([
+      supabase.from('class_reports')
+        .select('instructor_id, instructor:instructors(name), lesson:lessons(lesson_type)')
+        .not('admin_approved_at', 'is', null)
+        .gte('date', month + '-01').lte('date', month + '-31'),
+      supabase.from('instructor_rates').select('*'),
+    ]).then(([{ data: reports }, { data: rates }]) => {
+      const rateMap: Record<string, Record<string, number>> = {}
+      ;(rates || []).forEach((r: any) => {
+        if (!rateMap[r.instructor_id]) rateMap[r.instructor_id] = {}
+        rateMap[r.instructor_id][r.lesson_type] = r.rate
       })
+
+      const map: Record<string, { name: string; counts: Record<string, number> }> = {}
+      ;(reports || []).forEach((r: any) => {
+        const iid = r.instructor_id
+        if (!map[iid]) map[iid] = { name: r.instructor?.name ?? '', counts: {} }
+        const t = r.lesson?.lesson_type ?? '취미반'
+        map[iid].counts[t] = (map[iid].counts[t] ?? 0) + 1
+      })
+
+      const result = Object.entries(map).map(([iid, { name, counts }]) => {
+        const breakdown = Object.entries(counts).map(([type, count]) => ({
+          type, count, rate: rateMap[iid]?.[type] ?? 0,
+        }))
+        const total = breakdown.reduce((s, b) => s + b.count * b.rate, 0)
+        return { instructorId: iid, name, breakdown, total }
+      }).sort((a, b) => b.total - a.total)
+
+      setData(result)
+      setLoading(false)
+    })
   }, [month])
 
-  const total = data.reduce((s, d) => s + d.amount, 0)
+  const total = data.reduce((s, d) => s + d.total, 0)
 
   return (
     <div className="space-y-4">
@@ -704,16 +732,21 @@ function PayrollView() {
       ) : data.length === 0 ? (
         <div className="py-12 text-center" style={{ color: 'rgba(255,255,255,0.25)' }}><p className="text-sm">확인된 평가서가 없어요</p></div>
       ) : (
-        data.map((d, i) => (
-          <div key={i} className="px-5 py-4 rounded-2xl flex items-center justify-between"
+        data.map((d) => (
+          <div key={d.instructorId} className="px-5 py-4 rounded-2xl space-y-2"
             style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <div>
-              <p className="text-white font-bold">{d.instructor?.name} 선생님</p>
-              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                {d.count}회 × {(d.instructor?.rate_per_lesson ?? 0).toLocaleString()}원
-              </p>
+            <div className="flex items-center justify-between">
+              <p className="text-white font-bold">{d.name} 선생님</p>
+              <p className="text-lg font-black" style={{ color: '#a5b4fc' }}>{d.total.toLocaleString()}원</p>
             </div>
-            <p className="text-lg font-black" style={{ color: '#a5b4fc' }}>{d.amount.toLocaleString()}원</p>
+            <div className="space-y-1 pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              {d.breakdown.map(b => (
+                <div key={b.type} className="flex items-center justify-between text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  <span>{b.type} {b.count}회</span>
+                  <span>{b.rate > 0 ? `${b.rate.toLocaleString()}원 × ${b.count} = ${(b.rate * b.count).toLocaleString()}원` : '단가 미설정'}</span>
+                </div>
+              ))}
+            </div>
           </div>
         ))
       )}
@@ -745,9 +778,12 @@ function ManageView() {
 
 function InstructorManager() {
   const [list, setList] = useState<any[]>([])
-  const [form, setForm] = useState({ name: '', phone: '', email: '', rate_per_lesson: '' })
+  const [form, setForm] = useState({ name: '', phone: '', email: '' })
   const [adding, setAdding] = useState(false)
   const [open, setOpen] = useState(false)
+  const [ratesOpen, setRatesOpen] = useState<string | null>(null)
+  const [ratesForm, setRatesForm] = useState<Record<string, string>>({})
+  const [ratesSaving, setRatesSaving] = useState(false)
 
   async function load() {
     const { data } = await supabase.from('instructors').select('*').order('name')
@@ -756,15 +792,36 @@ function InstructorManager() {
   useEffect(() => { load() }, [])
 
   async function add() {
-    if (!form.name || !form.phone || !form.rate_per_lesson) { alert('이름, 전화번호, 단가를 입력해주세요.'); return }
+    if (!form.name || !form.phone) { alert('이름과 전화번호를 입력해주세요.'); return }
     setAdding(true)
     const { error } = await supabase.from('instructors').insert({
-      name: form.name, phone: form.phone, email: form.email || null,
-      rate_per_lesson: Number(form.rate_per_lesson), is_active: true,
+      name: form.name, phone: form.phone, email: form.email || null, is_active: true,
     })
     if (error) { alert('오류: ' + error.message); setAdding(false); return }
-    setForm({ name: '', phone: '', email: '', rate_per_lesson: '' })
+    setForm({ name: '', phone: '', email: '' })
     setOpen(false); setAdding(false); load()
+  }
+
+  async function openRates(instructorId: string) {
+    const { data } = await supabase.from('instructor_rates').select('*').eq('instructor_id', instructorId)
+    const init: Record<string, string> = {}
+    LESSON_TYPES.forEach(t => { init[t] = '' })
+    ;(data || []).forEach((r: any) => { init[r.lesson_type] = String(r.rate) })
+    setRatesForm(init)
+    setRatesOpen(instructorId)
+  }
+
+  async function saveRates(instructorId: string) {
+    setRatesSaving(true)
+    for (const type of LESSON_TYPES) {
+      const rate = Number(ratesForm[type] || 0)
+      await supabase.from('instructor_rates').upsert(
+        { instructor_id: instructorId, lesson_type: type, rate },
+        { onConflict: 'instructor_id,lesson_type' }
+      )
+    }
+    setRatesSaving(false)
+    setRatesOpen(null)
   }
 
   async function toggleActive(id: string, current: boolean) {
@@ -781,7 +838,7 @@ function InstructorManager() {
       </button>
       {open && (
         <div className="px-5 py-4 rounded-2xl space-y-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          {[['name', '이름 *', 'text'], ['phone', '전화번호 *', 'text'], ['email', '이메일 (로그인용)', 'email'], ['rate_per_lesson', '수업 단가 (원) *', 'number']].map(([k, ph, type]) => (
+          {[['name', '이름 *', 'text'], ['phone', '전화번호 *', 'text'], ['email', '이메일 (로그인용)', 'email']].map(([k, ph, type]) => (
             <input key={k} placeholder={ph} value={(form as any)[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
               type={type}
               className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
@@ -795,20 +852,48 @@ function InstructorManager() {
         </div>
       )}
       {list.map(i => (
-        <div key={i.id} className="px-5 py-4 rounded-2xl flex items-center justify-between"
+        <div key={i.id} className="rounded-2xl overflow-hidden"
           style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          <div>
-            <p className="text-white font-semibold">{i.name}</p>
-            <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              {i.phone} · {i.rate_per_lesson?.toLocaleString()}원/회
-            </p>
-            {i.email && <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.25)' }}>{i.email}</p>}
+          <div className="px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-white font-semibold">{i.name}</p>
+              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{i.phone}</p>
+              {i.email && <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.25)' }}>{i.email}</p>}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => ratesOpen === i.id ? setRatesOpen(null) : openRates(i.id)}
+                className="text-xs px-2 py-1 rounded-lg"
+                style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc' }}>
+                단가 설정
+              </button>
+              <button onClick={() => toggleActive(i.id, i.is_active)}
+                className="text-xs px-2 py-1 rounded-lg"
+                style={{ background: i.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)', color: i.is_active ? '#6ee7b7' : 'rgba(255,255,255,0.3)' }}>
+                {i.is_active ? '활성' : '비활성'}
+              </button>
+            </div>
           </div>
-          <button onClick={() => toggleActive(i.id, i.is_active)}
-            className="text-xs px-2 py-1 rounded-lg"
-            style={{ background: i.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)', color: i.is_active ? '#6ee7b7' : 'rgba(255,255,255,0.3)' }}>
-            {i.is_active ? '활성' : '비활성'}
-          </button>
+          {ratesOpen === i.id && (
+            <div className="px-5 pb-4 space-y-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <p className="text-xs font-bold pt-3 mb-3" style={{ color: 'rgba(255,255,255,0.4)' }}>수업 타입별 단가 (원/회)</p>
+              <div className="grid grid-cols-2 gap-2">
+                {LESSON_TYPES.map(t => (
+                  <div key={t}>
+                    <label className="text-[11px] mb-1 block" style={{ color: 'rgba(255,255,255,0.35)' }}>{t}</label>
+                    <input type="number" placeholder="0" value={ratesForm[t] || ''}
+                      onChange={e => setRatesForm(f => ({ ...f, [t]: e.target.value }))}
+                      className="w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => saveRates(i.id)} disabled={ratesSaving}
+                className="w-full py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 mt-2"
+                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff' }}>
+                {ratesSaving ? '저장 중...' : '저장'}
+              </button>
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -893,7 +978,7 @@ function StudentManager() {
 function ScheduleManager() {
   const [list, setList] = useState<any[]>([])
   const [students, setStudents] = useState<any[]>([])
-  const [form, setForm] = useState({ student_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '' })
+  const [form, setForm] = useState({ student_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '', lesson_type: '취미반' })
   const [adding, setAdding] = useState(false)
   const [open, setOpen] = useState(false)
 
@@ -913,10 +998,11 @@ function ScheduleManager() {
     const { error } = await supabase.from('lesson_schedules').insert({
       student_id: form.student_id, instructor_id: student?.instructor_id,
       day_of_week: Number(form.day_of_week), start_time: form.start_time,
-      duration_minutes: Number(form.duration_minutes), start_date: form.start_date, is_active: true,
+      duration_minutes: Number(form.duration_minutes), start_date: form.start_date,
+      lesson_type: form.lesson_type, is_active: true,
     })
     if (error) { alert('오류: ' + error.message); setAdding(false); return }
-    setForm({ student_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '' })
+    setForm({ student_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '', lesson_type: '취미반' })
     setOpen(false); setAdding(false); load()
   }
 
@@ -954,6 +1040,11 @@ function ScheduleManager() {
             style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
             {[30, 45, 60, 90, 120].map(m => <option key={m} value={m}>{m}분</option>)}
           </select>
+          <select value={form.lesson_type} onChange={e => setForm(f => ({ ...f, lesson_type: e.target.value }))}
+            className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
+            {LESSON_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
           <div>
             <label className="text-xs mb-1 block" style={{ color: 'rgba(255,255,255,0.4)' }}>수업 시작일</label>
             <input type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
@@ -973,7 +1064,7 @@ function ScheduleManager() {
           <div>
             <p className="text-white font-semibold">{sc.student?.name}</p>
             <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              {DAY_NAMES[sc.day_of_week]}요일 {sc.start_time?.slice(0, 5)} · {sc.duration_minutes}분 · {sc.student?.instructor?.name}
+              {DAY_NAMES[sc.day_of_week]}요일 {sc.start_time?.slice(0, 5)} · {sc.duration_minutes}분 · {sc.lesson_type ?? '취미반'} · {sc.student?.instructor?.name}
             </p>
           </div>
           <button onClick={() => deactivate(sc.id)}

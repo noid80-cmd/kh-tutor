@@ -1,8 +1,51 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Instructor } from '@/lib/supabase'
+
+function CustomSelect({ value, onChange, options, placeholder }: {
+  value: string
+  onChange: (v: string) => void
+  options: { value: string; label: string }[]
+  placeholder: string
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const selected = options.find(o => o.value === value)
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} className="relative w-full">
+      <button type="button" onClick={() => setOpen(o => !o)}
+        className="w-full rounded-xl px-4 py-3 text-sm text-left flex items-center justify-between"
+        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', color: selected ? '#fff' : 'rgba(255,255,255,0.35)' }}>
+        <span>{selected ? selected.label : placeholder}</span>
+        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden"
+          style={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
+          {options.map(o => (
+            <button key={o.value} type="button"
+              onClick={() => { onChange(o.value); setOpen(false) }}
+              className="w-full px-4 py-3 text-sm text-left"
+              style={{ color: o.value === value ? '#a5b4fc' : 'rgba(255,255,255,0.75)', background: o.value === value ? 'rgba(99,102,241,0.15)' : 'transparent' }}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const ADMIN_EMAILS = ['noid80@hanmail.net']
 const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토']
@@ -470,12 +513,12 @@ function MakeupForm({ onDone }: { onDone: () => void }) {
   return (
     <div className="px-5 py-4 rounded-2xl space-y-3" style={{ background: 'rgba(253,230,138,0.06)', border: '1px solid rgba(253,230,138,0.15)' }}>
       <p className="text-sm font-bold" style={{ color: '#fde68a' }}>보강 수업 추가</p>
-      <select value={form.student_id} onChange={e => setForm(f => ({ ...f, student_id: e.target.value }))}
-        className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
-        <option value="">학생 선택 *</option>
-        {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-      </select>
+      <CustomSelect
+        value={form.student_id}
+        onChange={v => setForm(f => ({ ...f, student_id: v }))}
+        placeholder="학생 선택 *"
+        options={students.map(s => ({ value: s.id, label: s.name }))}
+      />
       <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
         className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
         style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
@@ -944,12 +987,12 @@ function StudentManager() {
           <input placeholder="전화번호" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
             className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
             style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-          <select value={form.instructor_id} onChange={e => setForm(f => ({ ...f, instructor_id: e.target.value }))}
-            className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
-            <option value="">담당 강사 선택 *</option>
-            {instructors.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
+          <CustomSelect
+            value={form.instructor_id}
+            onChange={v => setForm(f => ({ ...f, instructor_id: v }))}
+            placeholder="담당 강사 선택 *"
+            options={instructors.map(i => ({ value: i.id, label: i.name }))}
+          />
           <button onClick={add} disabled={adding}
             className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50"
             style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff' }}>
@@ -1021,17 +1064,18 @@ function ScheduleManager() {
       </button>
       {open && (
         <div className="px-5 py-4 rounded-2xl space-y-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <select value={form.student_id} onChange={e => setForm(f => ({ ...f, student_id: e.target.value }))}
-            className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
-            <option value="">학생 선택 *</option>
-            {students.map(s => <option key={s.id} value={s.id}>{s.name} ({s.instructor?.name})</option>)}
-          </select>
-          <select value={form.day_of_week} onChange={e => setForm(f => ({ ...f, day_of_week: e.target.value }))}
-            className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
-            {DAY_NAMES.map((d, i) => <option key={i} value={i}>{d}요일</option>)}
-          </select>
+          <CustomSelect
+            value={form.student_id}
+            onChange={v => setForm(f => ({ ...f, student_id: v }))}
+            placeholder="학생 선택 *"
+            options={students.map(s => ({ value: s.id, label: `${s.name} (${s.instructor?.name})` }))}
+          />
+          <CustomSelect
+            value={form.day_of_week}
+            onChange={v => setForm(f => ({ ...f, day_of_week: v }))}
+            placeholder="요일 선택"
+            options={DAY_NAMES.map((d, i) => ({ value: String(i), label: `${d}요일` }))}
+          />
           <input type="time" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))}
             className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
             style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />

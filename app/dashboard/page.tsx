@@ -486,20 +486,24 @@ function ScheduleView({ isAdmin, instructor }: { isAdmin: boolean; instructor: I
 
 function MakeupForm({ onDone }: { onDone: () => void }) {
   const [students, setStudents] = useState<any[]>([])
-  const [form, setForm] = useState({ student_id: '', date: '', start_time: '', duration_minutes: '60', lesson_type: '취미반' })
+  const [instructors, setInstructors] = useState<any[]>([])
+  const [form, setForm] = useState({ student_id: '', instructor_id: '', date: '', start_time: '', duration_minutes: '60', lesson_type: '취미반' })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    supabase.from('students').select('id, name, instructor_id').eq('is_active', true).order('name')
-      .then(({ data }) => setStudents(data || []))
+    Promise.all([
+      supabase.from('students').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('instructors').select('id, name').eq('is_active', true).order('name'),
+    ]).then(([{ data: s }, { data: i }]) => { setStudents(s || []); setInstructors(i || []) })
   }, [])
 
   async function save() {
-    if (!form.student_id || !form.date || !form.start_time) { alert('학생, 날짜, 시간을 입력해주세요.'); return }
-    const student = students.find(s => s.id === form.student_id)
+    if (!form.student_id || !form.instructor_id || !form.date || !form.start_time) {
+      alert('학생, 강사, 날짜, 시간을 입력해주세요.'); return
+    }
     setSaving(true)
     const { error } = await supabase.from('lessons').insert({
-      instructor_id: student.instructor_id, student_id: form.student_id,
+      instructor_id: form.instructor_id, student_id: form.student_id,
       date: form.date, start_time: form.start_time,
       duration_minutes: Number(form.duration_minutes),
       lesson_type: form.lesson_type,
@@ -518,6 +522,12 @@ function MakeupForm({ onDone }: { onDone: () => void }) {
         onChange={v => setForm(f => ({ ...f, student_id: v }))}
         placeholder="학생 선택 *"
         options={students.map(s => ({ value: s.id, label: s.name }))}
+      />
+      <CustomSelect
+        value={form.instructor_id}
+        onChange={v => setForm(f => ({ ...f, instructor_id: v }))}
+        placeholder="강사 선택 *"
+        options={instructors.map(i => ({ value: i.id, label: i.name }))}
       />
       <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
         className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
@@ -960,9 +970,12 @@ function StudentManager() {
   useEffect(() => { load() }, [])
 
   async function add() {
-    if (!form.name || !form.instructor_id) { alert('이름과 담당 강사를 선택해주세요.'); return }
+    if (!form.name) { alert('이름을 입력해주세요.'); return }
     setAdding(true)
-    const { error } = await supabase.from('students').insert({ name: form.name, phone: form.phone, instructor_id: form.instructor_id, is_active: true })
+    const { error } = await supabase.from('students').insert({
+      name: form.name, phone: form.phone,
+      instructor_id: form.instructor_id || null, is_active: true,
+    })
     if (error) { alert('오류: ' + error.message); setAdding(false); return }
     setForm({ name: '', phone: '', instructor_id: '' }); setOpen(false); setAdding(false); load()
   }
@@ -990,7 +1003,7 @@ function StudentManager() {
           <CustomSelect
             value={form.instructor_id}
             onChange={v => setForm(f => ({ ...f, instructor_id: v }))}
-            placeholder="담당 강사 선택 *"
+            placeholder="담당 강사 (선택사항)"
             options={instructors.map(i => ({ value: i.id, label: i.name }))}
           />
           <button onClick={add} disabled={adding}
@@ -1021,31 +1034,34 @@ function StudentManager() {
 function ScheduleManager() {
   const [list, setList] = useState<any[]>([])
   const [students, setStudents] = useState<any[]>([])
-  const [form, setForm] = useState({ student_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '', lesson_type: '취미반' })
+  const [instructors, setInstructors] = useState<any[]>([])
+  const [form, setForm] = useState({ student_id: '', instructor_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '', lesson_type: '취미반' })
   const [adding, setAdding] = useState(false)
   const [open, setOpen] = useState(false)
 
   async function load() {
-    const [{ data: sc }, { data: st }] = await Promise.all([
-      supabase.from('lesson_schedules').select('*, student:students(name, instructor:instructors(name))').eq('is_active', true).order('day_of_week').order('start_time'),
-      supabase.from('students').select('id, name, instructor_id, instructor:instructors(name, id)').eq('is_active', true).order('name'),
+    const [{ data: sc }, { data: st }, { data: ins }] = await Promise.all([
+      supabase.from('lesson_schedules').select('*, student:students(name), instructor:instructors(name)').eq('is_active', true).order('day_of_week').order('start_time'),
+      supabase.from('students').select('id, name').eq('is_active', true).order('name'),
+      supabase.from('instructors').select('id, name').eq('is_active', true).order('name'),
     ])
-    setList(sc || []); setStudents(st || [])
+    setList(sc || []); setStudents(st || []); setInstructors(ins || [])
   }
   useEffect(() => { load() }, [])
 
   async function add() {
-    if (!form.student_id || !form.start_time || !form.start_date) { alert('학생, 시간, 시작일을 입력해주세요.'); return }
-    const student = students.find(s => s.id === form.student_id)
+    if (!form.student_id || !form.instructor_id || !form.start_time || !form.start_date) {
+      alert('학생, 강사, 시간, 시작일을 입력해주세요.'); return
+    }
     setAdding(true)
     const { error } = await supabase.from('lesson_schedules').insert({
-      student_id: form.student_id, instructor_id: student?.instructor_id,
+      student_id: form.student_id, instructor_id: form.instructor_id,
       day_of_week: Number(form.day_of_week), start_time: form.start_time,
       duration_minutes: Number(form.duration_minutes), start_date: form.start_date,
       lesson_type: form.lesson_type, is_active: true,
     })
     if (error) { alert('오류: ' + error.message); setAdding(false); return }
-    setForm({ student_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '', lesson_type: '취미반' })
+    setForm({ student_id: '', instructor_id: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '', lesson_type: '취미반' })
     setOpen(false); setAdding(false); load()
   }
 
@@ -1068,7 +1084,13 @@ function ScheduleManager() {
             value={form.student_id}
             onChange={v => setForm(f => ({ ...f, student_id: v }))}
             placeholder="학생 선택 *"
-            options={students.map(s => ({ value: s.id, label: `${s.name} (${s.instructor?.name})` }))}
+            options={students.map(s => ({ value: s.id, label: s.name }))}
+          />
+          <CustomSelect
+            value={form.instructor_id}
+            onChange={v => setForm(f => ({ ...f, instructor_id: v }))}
+            placeholder="강사 선택 *"
+            options={instructors.map(i => ({ value: i.id, label: i.name }))}
           />
           <CustomSelect
             value={form.day_of_week}
@@ -1108,7 +1130,7 @@ function ScheduleManager() {
           <div>
             <p className="text-white font-semibold">{sc.student?.name}</p>
             <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              {DAY_NAMES[sc.day_of_week]}요일 {sc.start_time?.slice(0, 5)} · {sc.duration_minutes}분 · {sc.lesson_type ?? '취미반'} · {sc.student?.instructor?.name}
+              {DAY_NAMES[sc.day_of_week]}요일 {sc.start_time?.slice(0, 5)} · {sc.duration_minutes}분 · {sc.lesson_type ?? '취미반'} · {sc.instructor?.name}
             </p>
           </div>
           <button onClick={() => deactivate(sc.id)}

@@ -1134,6 +1134,13 @@ function InstructorManager() {
     load()
   }
 
+  async function deleteInstructor(id: string, name: string) {
+    if (!confirm(`${name} 강사를 삭제할까요?\n연결된 수업이 있으면 삭제되지 않아요.`)) return
+    const { error } = await supabase.from('instructors').delete().eq('id', id)
+    if (error) { alert('삭제 실패: 이 강사에 연결된 수업 기록이 있어요.'); return }
+    load()
+  }
+
   return (
     <div className="space-y-3">
       <button onClick={() => setOpen(o => !o)}
@@ -1175,6 +1182,11 @@ function InstructorManager() {
                 className="text-xs px-2 py-1 rounded-lg"
                 style={{ background: i.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)', color: i.is_active ? '#6ee7b7' : 'rgba(255,255,255,0.3)' }}>
                 {i.is_active ? '활성' : '비활성'}
+              </button>
+              <button onClick={() => deleteInstructor(i.id, i.name)}
+                className="text-xs px-2 py-1 rounded-lg"
+                style={{ background: 'rgba(239,68,68,0.08)', color: 'rgba(248,113,113,0.6)' }}>
+                삭제
               </button>
             </div>
           </div>
@@ -1321,6 +1333,13 @@ function StudentCard({ student, onReload }: { student: any; onReload: () => void
     onReload()
   }
 
+  async function deleteStudent() {
+    if (!confirm(`${student.name} 학생을 삭제할까요?\n수업 기록이 있으면 삭제되지 않아요.`)) return
+    const { error } = await supabase.from('students').delete().eq('id', student.id)
+    if (error) { alert('삭제 실패: 이 학생에 연결된 수업 기록이 있어요.'); return }
+    onReload()
+  }
+
   return (
     <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
       {/* 학생 헤더 */}
@@ -1357,10 +1376,16 @@ function StudentCard({ student, onReload }: { student: any; onReload: () => void
             )}
           </div>
         </div>
-        <button onClick={toggleActive} className="text-xs px-2 py-1 rounded-lg shrink-0"
-          style={{ background: student.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)', color: student.is_active ? '#6ee7b7' : 'rgba(255,255,255,0.3)' }}>
-          {student.is_active ? '활성' : '비활성'}
-        </button>
+        <div className="flex gap-2 shrink-0">
+          <button onClick={toggleActive} className="text-xs px-2 py-1 rounded-lg"
+            style={{ background: student.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)', color: student.is_active ? '#6ee7b7' : 'rgba(255,255,255,0.3)' }}>
+            {student.is_active ? '활성' : '비활성'}
+          </button>
+          <button onClick={deleteStudent} className="text-xs px-2 py-1 rounded-lg"
+            style={{ background: 'rgba(239,68,68,0.08)', color: 'rgba(248,113,113,0.6)' }}>
+            삭제
+          </button>
+        </div>
       </div>
 
       {/* 수업 목록 – 항상 표시 */}

@@ -1135,7 +1135,8 @@ function InstructorManager() {
   }
 
   async function deleteInstructor(id: string, name: string) {
-    if (!confirm(`${name} 강사를 삭제할까요?\n연결된 수업이 있으면 삭제되지 않아요.`)) return
+    if (!confirm(`${name} 강사를 삭제할까요?\n수업 기록이 있으면 삭제되지 않아요.`)) return
+    await supabase.from('instructor_rates').delete().eq('instructor_id', id)
     const { error } = await supabase.from('instructors').delete().eq('id', id)
     if (error) { alert('삭제 실패: 이 강사에 연결된 수업 기록이 있어요.'); return }
     load()

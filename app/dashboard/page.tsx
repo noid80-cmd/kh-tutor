@@ -1056,10 +1056,10 @@ function PayrollView() {
 
 // ── 관리 ──────────────────────────────────────────────
 function ManageView() {
-  const [tab, setTab] = useState<'instructors' | 'students' | 'schedules'>('instructors')
+  const [tab, setTab] = useState<'instructors' | 'students' | 'schedules'>('students')
   const labels: [typeof tab, string][] = [
-    ['instructors', '강사 추가'],
     ['students', '학생 추가'],
+    ['instructors', '강사 추가'],
     ['schedules', '정규 수업'],
   ]
   return (

@@ -118,7 +118,14 @@ export default function Dashboard() {
       const admin = user.email === ADMIN_EMAIL
       setIsAdmin(admin)
       if (!admin) {
-        const { data } = await supabase.from('instructors').select('*').eq('user_id', user.id).single()
+        let { data } = await supabase.from('instructors').select('*').eq('user_id', user.id).maybeSingle()
+        if (!data && user.email) {
+          const { data: byEmail } = await supabase.from('instructors').select('*').eq('email', user.email).is('user_id', null).maybeSingle()
+          if (byEmail) {
+            await supabase.from('instructors').update({ user_id: user.id }).eq('id', byEmail.id)
+            data = { ...byEmail, user_id: user.id }
+          }
+        }
         if (!data) { router.push('/login'); return }
         setInstructor(data)
         setTab('today')

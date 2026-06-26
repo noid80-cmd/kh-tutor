@@ -1,1607 +1,1382 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import type { Instructor } from '@/lib/supabase'
+import type { Instructor, Student, Assignment, GroupClass, Evaluation, GradeRate, Grade, LessonType } from '@/lib/supabase'
 
-function CustomSelect({ value, onChange, options, placeholder }: {
-  value: string
-  onChange: (v: string) => void
-  options: { value: string; label: string }[]
-  placeholder: string
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  const selected = options.find(o => o.value === value)
+// ── 상수 ──────────────────────────────────────────────────────
 
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+const ADMIN_EMAIL = 'noid80@hanmail.net'
+const GRADES: Grade[] = ['S', 'A', 'B', 'C']
+const LESSON_TYPES: LessonType[] = ['전공', '부전공', '전문반', '취미', '단체']
+const DAYS = ['일', '월', '화', '수', '목', '금', '토']
+const GRADE_COLOR: Record<Grade, string> = { S: '#c0a060', A: '#7090e0', B: '#60b080', C: '#a0a0a0' }
 
+function fmt만원(n: number) {
+  return n.toLocaleString('ko-KR') + '원'
+}
+
+function getDefaultPayrollRange() {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  const start = new Date(y, m - 1, 11).toISOString().split('T')[0]
+  const end   = new Date(y, m, 10).toISOString().split('T')[0]
+  return { start, end }
+}
+
+function todayStr() {
+  return new Date().toISOString().split('T')[0]
+}
+
+// ── 공통 컴포넌트 ─────────────────────────────────────────────
+
+function Spinner() {
   return (
-    <div ref={ref} className="relative w-full">
-      <button type="button" onClick={() => setOpen(o => !o)}
-        className="w-full rounded-xl px-4 py-3 text-sm text-left flex items-center justify-between"
-        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', color: selected ? '#fff' : 'rgba(255,255,255,0.35)' }}>
-        <span>{selected ? selected.label : placeholder}</span>
-        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <div className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden"
-          style={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-          {options.map(o => (
-            <button key={o.value} type="button"
-              onClick={() => { onChange(o.value); setOpen(false) }}
-              className="w-full px-4 py-3 text-sm text-left"
-              style={{ color: o.value === value ? '#a5b4fc' : 'rgba(255,255,255,0.75)', background: o.value === value ? 'rgba(99,102,241,0.15)' : 'transparent' }}>
-              {o.label}
-            </button>
-          ))}
-        </div>
-      )}
+    <div style={{ display:'flex', justifyContent:'center', padding: 40 }}>
+      <div style={{ width:28, height:28, border:'3px solid #333', borderTopColor:'#c0a060', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
 }
 
-function SubjectSelect({ value, onChange, instructorId }: {
-  value: string; onChange: (v: string) => void; instructorId: string
-}) {
-  const [subjects, setSubjects] = useState<string[]>([])
-  const [open, setOpen] = useState(false)
-  const [adding, setAdding] = useState(false)
-  const [newSubject, setNewSubject] = useState('')
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!instructorId) { setSubjects([]); return }
-    supabase.from('lesson_schedules').select('subject_name')
-      .eq('instructor_id', instructorId).not('subject_name', 'is', null)
-      .then(({ data }) => {
-        const unique = [...new Set((data || []).map((r: any) => r.subject_name).filter(Boolean))] as string[]
-        setSubjects(unique)
-      })
-  }, [instructorId])
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) { setOpen(false); setAdding(false) }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  function confirmNew() {
-    const t = newSubject.trim()
-    if (!t) return
-    onChange(t)
-    if (!subjects.includes(t)) setSubjects(prev => [...prev, t])
-    setNewSubject(''); setAdding(false); setOpen(false)
-  }
-
+function Badge({ grade }: { grade: Grade }) {
   return (
-    <div ref={ref} className="relative w-full">
-      <button type="button" onClick={() => setOpen(o => !o)}
-        className="w-full rounded-xl px-4 py-3 text-sm text-left flex items-center justify-between"
-        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', color: value ? '#fff' : 'rgba(255,255,255,0.35)' }}>
-        <span>{value || '과목명 선택 *'}</span>
-        <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11 }}>{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <div className="absolute z-50 w-full mt-1 rounded-xl overflow-hidden"
-          style={{ background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}>
-          {subjects.length === 0 && !adding && (
-            <p className="px-4 py-3 text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>아직 등록된 과목이 없어요</p>
-          )}
-          {subjects.map(s => (
-            <button key={s} type="button" onClick={() => { onChange(s); setOpen(false) }}
-              className="w-full px-4 py-3 text-sm text-left"
-              style={{ color: s === value ? '#a5b4fc' : 'rgba(255,255,255,0.75)', background: s === value ? 'rgba(99,102,241,0.15)' : 'transparent' }}>
-              {s}
-            </button>
-          ))}
-          {adding ? (
-            <div className="px-3 py-2 flex gap-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <input autoFocus value={newSubject} onChange={e => setNewSubject(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && confirmNew()}
-                placeholder="과목명 입력 후 Enter"
-                className="flex-1 rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
-                style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(99,102,241,0.3)' }} />
-              <button type="button" onClick={confirmNew}
-                className="px-3 py-2 rounded-lg text-xs font-bold"
-                style={{ background: 'rgba(99,102,241,0.3)', color: '#a5b4fc' }}>확인</button>
-            </div>
-          ) : (
-            <button type="button" onClick={() => setAdding(true)}
-              className="w-full px-4 py-3 text-sm text-left font-semibold"
-              style={{ color: '#818cf8', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              + 과목 추가
-            </button>
-          )}
+    <span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:22, height:22, borderRadius:'50%', background: GRADE_COLOR[grade], color:'#111', fontSize:11, fontWeight:800 }}>
+      {grade}
+    </span>
+  )
+}
+
+function StatusBadge({ status }: { status: 'submitted' | 'approved' }) {
+  return (
+    <span style={{
+      fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6,
+      background: status === 'approved' ? 'rgba(96,176,128,0.2)' : 'rgba(192,160,96,0.15)',
+      color: status === 'approved' ? '#60b080' : '#c0a060',
+      border: `1px solid ${status === 'approved' ? 'rgba(96,176,128,0.4)' : 'rgba(192,160,96,0.3)'}`,
+    }}>
+      {status === 'approved' ? '승인됨' : '검토중'}
+    </span>
+  )
+}
+
+const inputStyle: React.CSSProperties = {
+  background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box',
+}
+
+const selectStyle: React.CSSProperties = {
+  background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%',
+}
+
+function BottomSheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:200, display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
+      <div style={{ background:'#141416', borderRadius:'16px 16px 0 0', padding:'20px 16px 36px', maxHeight:'90vh', overflowY:'auto' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
+          <div style={{ fontSize:16, fontWeight:800 }}>{title}</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:'#888', fontSize:22, cursor:'pointer', lineHeight:1 }}>×</button>
         </div>
-      )}
-    </div>
-  )
-}
-
-const ADMIN_EMAILS = ['noid80@hanmail.net']
-const DAY_NAMES = ['일', '월', '화', '수', '목', '금', '토']
-const LESSON_TYPES = ['전공실기', '부전공실기', '단체수업', '전문반', '취미반'] as const
-const STUDENT_TYPES = ['입시반', '오디션반', '전문반', '취미반'] as const
-type LessonType = typeof LESSON_TYPES[number]
-
-type Tab = 'today' | 'schedule' | 'reports' | 'notify' | 'payroll' | 'manage'
-
-// 정규 스케줄에서 수업 자동 생성 (8주치)
-async function generateLessons(weeksAhead = 8) {
-  const { data: schedules } = await supabase.from('lesson_schedules').select('*').eq('is_active', true)
-  if (!schedules?.length) return 0
-
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  const endDate = new Date(today); endDate.setDate(today.getDate() + weeksAhead * 7)
-  let created = 0
-
-  for (const sc of schedules) {
-    const scStart = new Date(sc.start_date + 'T00:00:00')
-    const scEnd = sc.end_date ? new Date(sc.end_date + 'T00:00:00') : endDate
-    const rangeEnd = scEnd < endDate ? scEnd : endDate
-    const rangeStart = scStart > today ? scStart : today
-
-    const cur = new Date(rangeStart)
-    // 해당 요일로 맞추기
-    while (cur.getDay() !== sc.day_of_week) cur.setDate(cur.getDate() + 1)
-
-    while (cur <= rangeEnd) {
-      const dateStr = cur.toISOString().split('T')[0]
-      const { data: existing } = await supabase.from('lessons').select('id')
-        .eq('schedule_id', sc.id).eq('date', dateStr).maybeSingle()
-      if (!existing) {
-        await supabase.from('lessons').insert({
-          schedule_id: sc.id, instructor_id: sc.instructor_id,
-          student_id: sc.student_id ?? null, date: dateStr,
-          start_time: sc.start_time, duration_minutes: sc.duration_minutes,
-          lesson_type: sc.lesson_type ?? '취미반',
-          subject_name: sc.subject_name ?? null,
-          status: 'scheduled', is_makeup: false,
-        })
-        created++
-      }
-      cur.setDate(cur.getDate() + 7)
-    }
-  }
-  return created
-}
-
-export default function Dashboard() {
-  const [instructor, setInstructor] = useState<Instructor | null>(null)
-  const [isAdmin, setIsAdmin] = useState(false)
-  const [tab, setTab] = useState<Tab>('today')
-  const [loading, setLoading] = useState(true)
-  const [noAccess, setNoAccess] = useState(false)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) { window.location.href = '/login'; return }
-      const email = session.user.email ?? ''
-      const admin = ADMIN_EMAILS.includes(email)
-      setIsAdmin(admin)
-
-      if (!admin) {
-        // user_id로 먼저 찾고, 없으면 email로 찾아서 user_id 자동 연결
-        let { data } = await supabase.from('instructors').select('*').eq('user_id', session.user.id).maybeSingle()
-        if (!data && email) {
-          const { data: byEmail } = await supabase.from('instructors').select('*').eq('email', email).maybeSingle()
-          if (byEmail) {
-            await supabase.from('instructors').update({ user_id: session.user.id }).eq('id', byEmail.id)
-            data = { ...byEmail, user_id: session.user.id }
-          }
-        }
-        if (!data) { setNoAccess(true); setLoading(false); return }
-        setInstructor(data)
-      }
-      setLoading(false)
-    })
-  }, [])
-
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#0c0c12' }}>
-      <div className="w-8 h-8 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" />
-    </div>
-  )
-
-  if (noAccess) return (
-    <div className="min-h-screen flex items-center justify-center px-6" style={{ background: '#0c0c12' }}>
-      <div className="text-center">
-        <p className="text-4xl mb-4">🔒</p>
-        <p className="text-white font-bold text-lg mb-2">접근 권한이 없어요</p>
-        <p className="text-sm mb-6" style={{ color: 'rgba(255,255,255,0.4)' }}>관리자에게 계정 등록을 요청해주세요</p>
-        <button onClick={() => supabase.auth.signOut().then(() => window.location.href = '/login')}
-          className="text-sm font-semibold px-4 py-2 rounded-xl" style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}>
-          로그아웃
-        </button>
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>{children}</div>
       </div>
     </div>
   )
+}
 
-  const adminTabs: { key: Tab; label: string; emoji: string }[] = [
-    { key: 'today',    label: '오늘',   emoji: '📅' },
-    { key: 'schedule', label: '스케줄', emoji: '🗓️' },
-    { key: 'reports',  label: '평가서', emoji: '📋' },
-    { key: 'notify',   label: '알림',   emoji: '🔔' },
-    { key: 'payroll',  label: '급여',   emoji: '💰' },
-    { key: 'manage',   label: '관리',   emoji: '⚙️' },
+function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:5 }}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+function SaveButton({ onClick, loading }: { onClick: () => void; loading: boolean }) {
+  return (
+    <button onClick={onClick} disabled={loading} style={{
+      background:'#c0a060', color:'#111', border:'none', borderRadius:9, padding:'12px', fontSize:14, fontWeight:800, cursor:'pointer', opacity: loading ? 0.6 : 1, marginTop:4,
+    }}>
+      {loading ? '저장 중...' : '저장'}
+    </button>
+  )
+}
+
+// ── 메인 대시보드 ─────────────────────────────────────────────
+
+export default function Dashboard() {
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [instructor, setInstructor] = useState<Instructor | null>(null)
+  const [tab, setTab] = useState<string>('today')
+
+  useEffect(() => {
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) { router.push('/login'); return }
+      const admin = user.email === ADMIN_EMAIL
+      setIsAdmin(admin)
+      if (!admin) {
+        const { data } = await supabase.from('instructors').select('*').eq('user_id', user.id).single()
+        if (!data) { router.push('/login'); return }
+        setInstructor(data)
+        setTab('today')
+      } else {
+        setTab('approve')
+      }
+      setLoading(false)
+    })
+  }, [router])
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
+  if (loading) return (
+    <div style={{ background:'#0e0e10', minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <Spinner />
+    </div>
+  )
+
+  const instructorTabs = [
+    { id:'today',    label:'오늘 수업' },
+    { id:'evals',    label:'평가서' },
+    { id:'students', label:'내 학생' },
   ]
-  const instructorTabs: { key: Tab; label: string; emoji: string }[] = [
-    { key: 'today',    label: '오늘',   emoji: '📅' },
-    { key: 'schedule', label: '스케줄', emoji: '🗓️' },
-    { key: 'reports',  label: '평가서', emoji: '📋' },
+  const adminTabs = [
+    { id:'approve',  label:'승인' },
+    { id:'payroll',  label:'급여' },
+    { id:'manage',   label:'관리' },
   ]
   const tabs = isAdmin ? adminTabs : instructorTabs
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#0c0c12' }}>
+    <div style={{ background:'#0e0e10', minHeight:'100vh', color:'#e8e4d8', fontFamily:'system-ui, sans-serif', paddingBottom: 80 }}>
       {/* 헤더 */}
-      <div className="sticky top-0 z-20" style={{ background: 'rgba(12,12,18,0.96)', backdropFilter: 'blur(24px)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center justify-between" style={{ padding: '16px 20px' }}>
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)' }}>
-              <span className="text-white font-black text-sm">KH</span>
+      <div style={{ background:'#141416', borderBottom:'1px solid #222', padding:'14px 18px', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:100 }}>
+        <div>
+          <div style={{ fontSize:16, fontWeight:800, color:'#e8e4d8', letterSpacing:-0.5 }}>KH Music</div>
+          {instructor && (
+            <div style={{ fontSize:11, color:'#888', marginTop:1, display:'flex', alignItems:'center', gap:5 }}>
+              <Badge grade={instructor.grade} />
+              <span>{instructor.name} 강사님</span>
             </div>
-            <div>
-              <p className="text-white font-black text-lg leading-none">KH Tutor</p>
-              <p className="text-[11px] mt-0.5" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                {isAdmin ? '관리자' : instructor?.name + ' 선생님'}
-              </p>
-            </div>
-          </div>
-          <button onClick={() => supabase.auth.signOut().then(() => window.location.href = '/login')}
-            className="text-[11px] font-medium px-3 py-1.5 rounded-lg"
-            style={{ color: 'rgba(255,255,255,0.25)', background: 'rgba(255,255,255,0.04)' }}>
-            로그아웃
-          </button>
+          )}
+          {isAdmin && <div style={{ fontSize:11, color:'#c0a060', marginTop:1 }}>관리자</div>}
         </div>
+        <button onClick={handleLogout} style={{ background:'none', border:'1px solid #333', color:'#888', borderRadius:7, padding:'5px 12px', fontSize:12, cursor:'pointer' }}>
+          로그아웃
+        </button>
       </div>
 
-      {/* 콘텐츠 */}
-      <div className="px-4 pt-5">
-        {tab === 'today'    && <TodayView isAdmin={isAdmin} instructor={instructor} />}
-        {tab === 'schedule' && <ScheduleView isAdmin={isAdmin} instructor={instructor} />}
-        {tab === 'reports'  && <ReportsView isAdmin={isAdmin} instructor={instructor} />}
-        {tab === 'notify'   && isAdmin && <NotifyView />}
-        {tab === 'payroll'  && isAdmin && <PayrollView />}
-        {tab === 'manage'   && isAdmin && <ManageView />}
+      {/* 탭 컨텐츠 */}
+      <div>
+        {!isAdmin && instructor && (
+          <>
+            {tab === 'today'    && <TodayView    instructor={instructor} />}
+            {tab === 'evals'    && <EvalsView    instructor={instructor} />}
+            {tab === 'students' && <StudentsView instructor={instructor} />}
+          </>
+        )}
+        {isAdmin && (
+          <>
+            {tab === 'approve' && <ApproveView />}
+            {tab === 'payroll' && <PayrollView />}
+            {tab === 'manage'  && <ManageView />}
+          </>
+        )}
       </div>
 
       {/* 하단 탭바 */}
-      <div className="fixed bottom-0 left-0 right-0 z-20" style={{ background: 'rgba(12,12,18,0.97)', backdropFilter: 'blur(24px)', borderTop: '1px solid rgba(255,255,255,0.06)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
-        <div className="flex">
-          {tabs.map(t => {
-            const active = tab === t.key
-            return (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className="flex-1 flex flex-col items-center justify-center py-3 gap-1"
-                style={{ color: active ? '#818cf8' : 'rgba(255,255,255,0.25)' }}>
-                <span style={{ fontSize: 20 }}>{t.emoji}</span>
-                <span className="text-[10px] font-semibold">{t.label}</span>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── 오늘 수업 ──────────────────────────────────────────────
-function TodayView({ isAdmin, instructor }: { isAdmin: boolean; instructor: Instructor | null }) {
-  const [lessons, setLessons] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const today = new Date().toISOString().split('T')[0]
-
-  async function load() {
-    const query = supabase.from('lessons')
-      .select('*, instructor:instructors(name), student:students(name), class_report:class_reports(id, admin_approved_at)')
-      .eq('date', today).neq('status', 'cancelled').order('start_time')
-    if (!isAdmin && instructor) query.eq('instructor_id', instructor.id)
-    const { data } = await query
-    setLessons(data || [])
-    setLoading(false)
-  }
-
-  useEffect(() => { load() }, [isAdmin, instructor])
-
-  async function cancelLesson(id: string) {
-    if (!confirm('이 수업을 취소할까요?')) return
-    await supabase.from('lessons').update({ status: 'cancelled' }).eq('id', id)
-    load()
-  }
-
-  const statusColor = (s: string) => {
-    if (s === 'completed') return '#6ee7b7'
-    if (s === 'absent') return '#f87171'
-    if (s === 'student_makeup' || s === 'instructor_makeup') return '#fde68a'
-    return '#a5b4fc'
-  }
-  const statusLabel = (s: string) => {
-    if (s === 'completed') return '수업완료'
-    if (s === 'absent') return '비일결석'
-    if (s === 'student_makeup') return '학생의청보강'
-    if (s === 'instructor_makeup') return '강사의청보강'
-    return '예정'
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-white font-black text-xl">오늘 수업</p>
-        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>
-          {new Date().toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
-        </p>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-10"><div className="w-6 h-6 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" /></div>
-      ) : lessons.length === 0 ? (
-        <div className="py-12 text-center" style={{ color: 'rgba(255,255,255,0.25)' }}>
-          <p className="text-4xl mb-3">🎵</p><p className="text-sm">오늘 수업이 없어요</p>
-        </div>
-      ) : (
-        lessons.map(l => (
-          <div key={l.id} className="px-5 py-4 rounded-2xl space-y-3"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-white font-bold text-base">{l.student?.name ?? '단체수업'}</span>
-                {l.subject_name && <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>{l.subject_name}</span>}
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(255,255,255,0.07)', color: statusColor(l.status) }}>
-                  {statusLabel(l.status)}
-                </span>
-                {l.lesson_type && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}>{l.lesson_type}</span>}
-                {l.is_makeup && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(253,230,138,0.15)', color: '#fde68a' }}>보강</span>}
-              </div>
-              <span className="text-sm font-bold" style={{ color: 'rgba(255,255,255,0.6)' }}>{l.start_time?.slice(0, 5)}</span>
-            </div>
-            {isAdmin && <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>{l.instructor?.name} 선생님 · {l.duration_minutes}분</p>}
-
-            {/* 강사: 수업 기록 */}
-            {!isAdmin && l.status === 'scheduled' && (
-              <LessonStatusPanel lessonId={l.id} onDone={load} />
-            )}
-            {/* 평가서 작성됨 표시 */}
-            {l.class_report && (
-              <div className="text-xs px-3 py-1.5 rounded-xl inline-flex items-center gap-1.5"
-                style={{ background: l.class_report.admin_approved_at ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)', color: l.class_report.admin_approved_at ? '#6ee7b7' : 'rgba(255,255,255,0.4)' }}>
-                {l.class_report.admin_approved_at ? '✓ 확인완료' : '📋 평가서 작성됨'}
-              </div>
-            )}
-            {/* 취소 버튼 */}
-            {l.status === 'scheduled' && (
-              <button onClick={() => cancelLesson(l.id)}
-                className="text-xs px-3 py-1.5 rounded-xl"
-                style={{ background: 'rgba(239,68,68,0.08)', color: 'rgba(248,113,113,0.6)' }}>
-                수업 취소
-              </button>
-            )}
-          </div>
-        ))
-      )}
-    </div>
-  )
-}
-
-function LessonStatusPanel({ lessonId, onDone }: { lessonId: string; onDone: () => void }) {
-  const [open, setOpen] = useState(false)
-  const [status, setStatus] = useState('completed')
-  const [content, setContent] = useState('')
-  const [nextGoal, setNextGoal] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  const statusOptions = [
-    { value: 'completed',         label: '수업완료',     color: '#6ee7b7', bg: 'rgba(16,185,129,0.15)',  border: 'rgba(16,185,129,0.3)' },
-    { value: 'absent',            label: '비일결석',     color: '#f87171', bg: 'rgba(239,68,68,0.15)',   border: 'rgba(239,68,68,0.3)' },
-    { value: 'student_makeup',    label: '학생의청보강', color: '#fde68a', bg: 'rgba(253,230,138,0.15)', border: 'rgba(253,230,138,0.3)' },
-    { value: 'instructor_makeup', label: '강사의청보강', color: '#fbbf24', bg: 'rgba(251,191,36,0.15)',  border: 'rgba(251,191,36,0.3)' },
-  ]
-
-  async function submit() {
-    if (status === 'completed' && content.trim().length < 30) {
-      alert('수업 내용을 30자 이상 입력해주세요.'); return
-    }
-    setSaving(true)
-    const { data: lesson } = await supabase.from('lessons').select('instructor_id, student_id, date').eq('id', lessonId).single()
-    if (!lesson) { setSaving(false); return }
-    if (status === 'completed') {
-      const { error } = await supabase.from('class_reports').insert({
-        lesson_id: lessonId, instructor_id: lesson.instructor_id,
-        student_id: lesson.student_id, date: lesson.date,
-        content, next_goal: nextGoal,
-      })
-      if (error) { alert('오류: ' + error.message); setSaving(false); return }
-    }
-    await supabase.from('lessons').update({ status }).eq('id', lessonId)
-    setSaving(false); setOpen(false); onDone()
-  }
-
-  if (!open) return (
-    <button onClick={() => setOpen(true)}
-      className="w-full py-2.5 rounded-xl text-sm font-bold transition active:scale-95"
-      style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>
-      수업 기록
-    </button>
-  )
-
-  const selected = statusOptions.find(o => o.value === status)!
-
-  return (
-    <div className="space-y-3 pt-1">
-      {/* 수업 확인 선택 */}
-      <div className="grid grid-cols-2 gap-1.5">
-        {statusOptions.map(opt => (
-          <button key={opt.value} type="button" onClick={() => setStatus(opt.value)}
-            className="py-2 rounded-xl text-xs font-semibold"
-            style={{
-              background: status === opt.value ? opt.bg : 'rgba(255,255,255,0.04)',
-              color: status === opt.value ? opt.color : 'rgba(255,255,255,0.35)',
-              border: `1px solid ${status === opt.value ? opt.border : 'transparent'}`,
-            }}>
-            {opt.label}
+      <div style={{ position:'fixed', bottom:0, left:0, right:0, background:'#141416', borderTop:'1px solid #222', display:'flex', zIndex:100 }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            flex:1, background:'none', border:'none', padding:'10px 4px 14px', cursor:'pointer',
+            color: tab === t.id ? '#c0a060' : '#666', fontSize:12, fontWeight: tab === t.id ? 700 : 400,
+            borderTop: tab === t.id ? '2px solid #c0a060' : '2px solid transparent',
+          }}>
+            {t.label}
           </button>
         ))}
       </div>
-
-      {/* 수업 내용 (수업완료/보강요청 시) */}
-      {status !== 'absent' && (
-        <div className="relative">
-          <textarea value={content} onChange={e => setContent(e.target.value)}
-            placeholder={status === 'completed' ? '수업 내용 (30자 이상 필수) *' : '메모 (선택사항)'}
-            rows={3}
-            className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none resize-none"
-            style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: `1px solid ${status === 'completed' && content.length > 0 && content.length < 30 ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.1)'}`,
-              colorScheme: 'dark',
-            }} />
-          {status === 'completed' && (
-            <span className="absolute bottom-3 right-3 text-[10px]"
-              style={{ color: content.length >= 30 ? '#6ee7b7' : 'rgba(255,255,255,0.25)' }}>
-              {content.length} / 30
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* 다음 수업 목표 (수업완료 시) */}
-      {status === 'completed' && (
-        <textarea value={nextGoal} onChange={e => setNextGoal(e.target.value)}
-          placeholder="다음 수업 목표 (선택)" rows={2}
-          className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none resize-none"
-          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', colorScheme: 'dark' }} />
-      )}
-
-      <div className="flex gap-2">
-        <button onClick={() => setOpen(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-          style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}>취소</button>
-        <button onClick={submit} disabled={saving} className="flex-1 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50"
-          style={{ background: `linear-gradient(135deg, ${selected.color}88, ${selected.color}55)`, color: selected.color, border: `1px solid ${selected.border}` }}>
-          {saving ? '저장 중...' : '확인'}
-        </button>
-      </div>
     </div>
   )
 }
 
-// ── 스케줄 ──────────────────────────────────────────────
-function ScheduleView({ isAdmin, instructor }: { isAdmin: boolean; instructor: Instructor | null }) {
-  const [lessons, setLessons] = useState<any[]>([])
-  const [week, setWeek] = useState(0)
+// ── 강사: 오늘 수업 ───────────────────────────────────────────
+
+type TodayItem =
+  | { kind: 'individual'; assignment: Assignment & { student: Student } }
+  | { kind: 'group'; group: GroupClass }
+
+interface EvalFormState {
+  attended: boolean
+  content: string
+  next_goal: string
+  date: string
+  student_id?: string
+  group_id?: string
+  lesson_type: LessonType
+}
+
+function TodayView({ instructor }: { instructor: Instructor }) {
+  const [items, setItems] = useState<TodayItem[]>([])
+  const [evals, setEvals] = useState<Evaluation[]>([])
   const [loading, setLoading] = useState(true)
-  const [generating, setGenerating] = useState(false)
-  const [showMakeup, setShowMakeup] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [form, setForm] = useState<EvalFormState | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const todayDow = new Date().getDay()
 
-  const getWeekDates = (offset: number) => {
-    const now = new Date()
-    const day = now.getDay()
-    const monday = new Date(now)
-    monday.setDate(now.getDate() - (day === 0 ? 6 : day - 1) + offset * 7)
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(monday); d.setDate(monday.getDate() + i)
-      return d.toISOString().split('T')[0]
-    })
-  }
-
-  const dates = getWeekDates(week)
-  const today = new Date().toISOString().split('T')[0]
-
-  async function load() {
+  const loadData = useCallback(async () => {
     setLoading(true)
-    const query = supabase.from('lessons')
-      .select('*, instructor:instructors(name), student:students(name)')
-      .gte('date', dates[0]).lte('date', dates[6])
-      .neq('status', 'cancelled').order('date').order('start_time')
-    if (!isAdmin && instructor) query.eq('instructor_id', instructor.id)
-    const { data } = await query
-    setLessons(data || [])
+    const today = todayStr()
+    const [asRes, gcRes, evRes] = await Promise.all([
+      supabase.from('assignments').select('*, student:students(*)').eq('instructor_id', instructor.id).eq('is_active', true).eq('day_of_week', todayDow),
+      supabase.from('group_classes').select('*').eq('instructor_id', instructor.id).eq('is_active', true).eq('day_of_week', todayDow),
+      supabase.from('evaluations').select('*').eq('instructor_id', instructor.id).eq('date', today),
+    ])
+    const todayItems: TodayItem[] = [
+      ...(asRes.data ?? []).map((a: any) => ({ kind: 'individual' as const, assignment: a })),
+      ...(gcRes.data ?? []).map((g: any) => ({ kind: 'group' as const, group: g })),
+    ]
+    todayItems.sort((a, b) => {
+      const aTime = (a.kind === 'individual' ? a.assignment.start_time : a.group.start_time) ?? '99:99'
+      const bTime = (b.kind === 'individual' ? b.assignment.start_time : b.group.start_time) ?? '99:99'
+      return aTime.localeCompare(bTime)
+    })
+    setItems(todayItems)
+    setEvals(evRes.data ?? [])
     setLoading(false)
+  }, [instructor.id, todayDow])
+
+  useEffect(() => { loadData() }, [loadData])
+
+  function getEvalForItem(item: TodayItem): Evaluation | undefined {
+    if (item.kind === 'individual') return evals.find(e => e.student_id === item.assignment.student_id)
+    return evals.find(e => e.group_id === item.group.id)
   }
 
-  useEffect(() => { load() }, [week, isAdmin, instructor])
-
-  async function handleGenerate() {
-    setGenerating(true)
-    const n = await generateLessons(8)
-    setGenerating(false)
-    alert(`수업 ${n}개가 생성됐어요.`)
-    load()
+  function openForm(item: TodayItem) {
+    const existing = getEvalForItem(item)
+    if (existing) return
+    const id = item.kind === 'individual' ? item.assignment.id : item.group.id
+    if (expandedId === id) { setExpandedId(null); setForm(null); return }
+    setExpandedId(id)
+    if (item.kind === 'individual') {
+      setForm({ attended:true, content:'', next_goal:'', date:todayStr(), student_id:item.assignment.student_id, lesson_type:item.assignment.lesson_type })
+    } else {
+      setForm({ attended:true, content:'', next_goal:'', date:todayStr(), group_id:item.group.id, lesson_type:'단체' })
+    }
   }
 
-  async function cancelLesson(id: string) {
-    if (!confirm('이 수업을 취소할까요?')) return
-    await supabase.from('lessons').update({ status: 'cancelled' }).eq('id', id)
-    load()
+  async function submitEval() {
+    if (!form) return
+    if (!form.content.trim()) { setError('수업 내용을 입력해주세요'); return }
+    setSubmitting(true); setError('')
+    const { error: err } = await supabase.from('evaluations').insert({
+      instructor_id: instructor.id, date: form.date, lesson_type: form.lesson_type,
+      student_id: form.student_id ?? null, attended: form.student_id ? form.attended : null,
+      group_id: form.group_id ?? null, content: form.content.trim(),
+      next_goal: form.next_goal.trim() || null, status: 'submitted',
+    })
+    if (err) { setError('저장 실패: ' + err.message); setSubmitting(false); return }
+    setExpandedId(null); setForm(null)
+    await loadData()
+    setSubmitting(false)
   }
+
+  if (loading) return <Spinner />
+
+  const today = new Date()
+  const dateLabel = `${today.getMonth()+1}월 ${today.getDate()}일 (${DAYS[today.getDay()]})`
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-white font-black text-xl">주간 스케줄</p>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setWeek(w => w - 1)} className="w-8 h-8 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)' }}>‹</button>
-          <button onClick={() => setWeek(0)} className="text-xs px-3 py-1.5 rounded-xl font-semibold"
-            style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}>이번 주</button>
-          <button onClick={() => setWeek(w => w + 1)} className="w-8 h-8 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.6)' }}>›</button>
+    <div style={{ padding:'18px 16px' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <div>
+          <div style={{ fontSize:18, fontWeight:800 }}>오늘 수업</div>
+          <div style={{ fontSize:12, color:'#888', marginTop:2 }}>{dateLabel}</div>
         </div>
+        <button onClick={() => setShowAddModal(true)} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+          + 수업 추가
+        </button>
       </div>
 
-      {isAdmin && (
-        <div className="flex gap-2">
-          <button onClick={handleGenerate} disabled={generating}
-            className="flex-1 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
-            style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc', border: '1px solid rgba(99,102,241,0.2)' }}>
-            {generating ? '생성 중...' : '🔄 수업 자동 생성 (8주)'}
-          </button>
-          <button onClick={() => setShowMakeup(o => !o)}
-            className="flex-1 py-2.5 rounded-xl text-sm font-bold transition"
-            style={{ background: 'rgba(253,230,138,0.1)', color: '#fde68a', border: '1px solid rgba(253,230,138,0.2)' }}>
-            + 보강 추가
-          </button>
+      {items.length === 0 && (
+        <div style={{ textAlign:'center', color:'#555', padding:'40px 0', fontSize:13 }}>
+          오늘 정규 스케줄이 없어요
+          <div style={{ marginTop:8, fontSize:12, color:'#444' }}>추가 버튼으로 수업을 기록할 수 있어요</div>
         </div>
       )}
 
-      {showMakeup && isAdmin && <MakeupForm onDone={() => { setShowMakeup(false); load() }} />}
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        {items.map(item => {
+          const id = item.kind === 'individual' ? item.assignment.id : item.group.id
+          const evalDone = getEvalForItem(item)
+          const isExpanded = expandedId === id
 
-      {dates.map((date, i) => {
-        const dayLessons = lessons.filter(l => l.date === date)
-        const isToday = date === today
-        return (
-          <div key={date}>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-bold px-2 py-0.5 rounded-lg"
-                style={{ background: isToday ? 'rgba(99,102,241,0.2)' : 'transparent', color: isToday ? '#a5b4fc' : 'rgba(255,255,255,0.35)' }}>
-                {DAY_NAMES[i]} {new Date(date + 'T12:00:00').getDate()}
-              </span>
-              {dayLessons.length > 0 && <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>{dayLessons.length}개</span>}
-            </div>
-            {dayLessons.length === 0 ? (
-              <div className="h-10 rounded-xl flex items-center px-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
-                <span className="text-xs" style={{ color: 'rgba(255,255,255,0.15)' }}>수업 없음</span>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {dayLessons.map(l => (
-                  <div key={l.id} className="px-4 py-3 rounded-xl flex items-center justify-between"
-                    style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-white font-semibold text-sm">{l.student?.name ?? '단체수업'}</span>
-                        {l.subject_name && <span className="text-xs" style={{ color: 'rgba(255,255,255,0.45)' }}>{l.subject_name}</span>}
-                        {isAdmin && <span className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>{l.instructor?.name}</span>}
-                        {l.lesson_type && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc' }}>{l.lesson_type}</span>}
-                        {l.is_makeup && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(253,230,138,0.15)', color: '#fde68a' }}>보강</span>}
-                        {l.status === 'completed' && <span className="text-[10px]" style={{ color: '#6ee7b7' }}>✓</span>}
+          return (
+            <div key={id} style={{ background:'#141416', borderRadius:12, border:`1px solid ${evalDone ? '#2a3a2a' : '#222'}`, overflow:'hidden' }}>
+              <div style={{ padding:'14px 16px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div>
+                  {item.kind === 'individual' ? (
+                    <>
+                      <div style={{ fontSize:15, fontWeight:700 }}>{item.assignment.student?.name}</div>
+                      <div style={{ fontSize:11, color:'#888', marginTop:2 }}>
+                        {item.assignment.lesson_type}
+                        {item.assignment.start_time && <span style={{ marginLeft:6 }}>{item.assignment.start_time.slice(0,5)}</span>}
                       </div>
-                      <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>{l.start_time?.slice(0, 5)} · {l.duration_minutes}분</p>
-                    </div>
-                    {isAdmin && l.status === 'scheduled' && (
-                      <button onClick={() => cancelLesson(l.id)}
-                        className="text-[10px] px-2 py-1 rounded-lg"
-                        style={{ background: 'rgba(239,68,68,0.08)', color: 'rgba(248,113,113,0.5)' }}>취소</button>
-                    )}
-                  </div>
-                ))}
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize:15, fontWeight:700 }}>{item.group.name}</div>
+                      <div style={{ fontSize:11, color:'#888', marginTop:2 }}>
+                        단체수업
+                        {item.group.start_time && <span style={{ marginLeft:6 }}>{item.group.start_time.slice(0,5)}</span>}
+                      </div>
+                    </>
+                  )}
+                </div>
+                {evalDone ? (
+                  <StatusBadge status={evalDone.status} />
+                ) : (
+                  <button onClick={() => openForm(item)} style={{
+                    background: isExpanded ? '#1e2a1e' : '#1a1a1c',
+                    border: `1px solid ${isExpanded ? '#60b080' : '#333'}`,
+                    color: isExpanded ? '#60b080' : '#aaa',
+                    borderRadius:8, padding:'6px 13px', fontSize:12, fontWeight:600, cursor:'pointer',
+                  }}>
+                    {isExpanded ? '취소' : '수업 기록'}
+                  </button>
+                )}
               </div>
-            )}
-          </div>
-        )
-      })}
+
+              {isExpanded && form && (
+                <div style={{ borderTop:'1px solid #222', padding:'14px 16px', display:'flex', flexDirection:'column', gap:12 }}>
+                  <div>
+                    <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>날짜</label>
+                    <input type="date" value={form.date} onChange={e => setForm(f => f && ({ ...f, date:e.target.value }))} style={inputStyle} />
+                  </div>
+                  {form.student_id && (
+                    <div>
+                      <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:6 }}>출석</label>
+                      <div style={{ display:'flex', gap:8 }}>
+                        {[true, false].map(v => (
+                          <button key={String(v)} onClick={() => setForm(f => f && ({ ...f, attended: v }))} style={{
+                            flex:1, padding:'8px', borderRadius:8,
+                            border:`1px solid ${form.attended===v ? (v ? '#60b080' : '#e07060') : '#333'}`,
+                            background: form.attended===v ? (v ? 'rgba(96,176,128,0.15)' : 'rgba(224,112,96,0.15)') : '#1a1a1c',
+                            color: form.attended===v ? (v ? '#60b080' : '#e07060') : '#666',
+                            fontSize:13, fontWeight:700, cursor:'pointer',
+                          }}>
+                            {v ? '출석' : '결석'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>수업 내용 <span style={{ color:'#e07060' }}>*</span></label>
+                    <textarea value={form.content} onChange={e => setForm(f => f && ({ ...f, content:e.target.value }))}
+                      placeholder="오늘 수업에서 다룬 내용을 작성해주세요" rows={3}
+                      style={{ background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>다음 목표</label>
+                    <textarea value={form.next_goal} onChange={e => setForm(f => f && ({ ...f, next_goal:e.target.value }))}
+                      placeholder="다음 수업 목표 (선택)" rows={2}
+                      style={{ background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
+                  </div>
+                  {error && <div style={{ color:'#e07060', fontSize:12 }}>{error}</div>}
+                  <button onClick={submitEval} disabled={submitting} style={{
+                    background:'#c0a060', color:'#111', border:'none', borderRadius:9, padding:'11px', fontSize:14, fontWeight:800, cursor:'pointer', opacity: submitting ? 0.6 : 1,
+                  }}>
+                    {submitting ? '저장 중...' : '평가서 제출'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {showAddModal && (
+        <AddEvalModal instructorId={instructor.id} onClose={() => setShowAddModal(false)} onDone={() => { setShowAddModal(false); loadData() }} />
+      )}
     </div>
   )
 }
 
-function MakeupForm({ onDone }: { onDone: () => void }) {
-  const [students, setStudents] = useState<any[]>([])
-  const [instructors, setInstructors] = useState<any[]>([])
-  const [form, setForm] = useState({ student_id: '', instructor_id: '', date: '', start_time: '', duration_minutes: '60', lesson_type: '취미반', subject_name: '' })
-  const [saving, setSaving] = useState(false)
+// ── 수업 추가 모달 ─────────────────────────────────────────────
+
+function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string; onClose: () => void; onDone: () => void }) {
+  const [myStudents, setMyStudents] = useState<{ id:string; name:string; lesson_type:LessonType }[]>([])
+  const [groups, setGroups] = useState<GroupClass[]>([])
+  const [kind, setKind] = useState<'individual' | 'group'>('individual')
+  const [studentId, setStudentId] = useState('')
+  const [groupId, setGroupId] = useState('')
+  const [lessonType, setLessonType] = useState<LessonType>('전공')
+  const [attended, setAttended] = useState(true)
+  const [content, setContent] = useState('')
+  const [nextGoal, setNextGoal] = useState('')
+  const [date, setDate] = useState(todayStr())
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     Promise.all([
-      supabase.from('students').select('id, name').eq('is_active', true).order('name'),
-      supabase.from('instructors').select('id, name').eq('is_active', true).order('name'),
-    ]).then(([{ data: s }, { data: i }]) => { setStudents(s || []); setInstructors(i || []) })
-  }, [])
-
-  async function save() {
-    if (!form.student_id || !form.instructor_id || !form.date || !form.start_time) {
-      alert('학생, 강사, 날짜, 시간을 입력해주세요.'); return
-    }
-    setSaving(true)
-    const { error } = await supabase.from('lessons').insert({
-      instructor_id: form.instructor_id, student_id: form.student_id || null,
-      date: form.date, start_time: form.start_time,
-      duration_minutes: Number(form.duration_minutes),
-      lesson_type: form.lesson_type, subject_name: form.subject_name || null,
-      status: 'scheduled', is_makeup: true,
+      supabase.from('assignments').select('student:students(id,name), lesson_type').eq('instructor_id', instructorId).eq('is_active', true),
+      supabase.from('group_classes').select('*').eq('instructor_id', instructorId).eq('is_active', true),
+    ]).then(([asRes, gcRes]) => {
+      setMyStudents((asRes.data ?? []).map((d: any) => ({ id:d.student.id, name:d.student.name, lesson_type:d.lesson_type })))
+      setGroups(gcRes.data ?? [])
     })
-    setSaving(false)
-    if (error) { alert('오류: ' + error.message); return }
+  }, [instructorId])
+
+  useEffect(() => {
+    if (kind === 'individual' && studentId) {
+      const s = myStudents.find(s => s.id === studentId)
+      if (s) setLessonType(s.lesson_type)
+    }
+    if (kind === 'group') setLessonType('단체')
+  }, [kind, studentId, myStudents])
+
+  async function submit() {
+    if (kind === 'individual' && !studentId) { setError('학생을 선택해주세요'); return }
+    if (kind === 'group' && !groupId) { setError('단체수업을 선택해주세요'); return }
+    if (!content.trim()) { setError('수업 내용을 입력해주세요'); return }
+    setSubmitting(true); setError('')
+    const { error: err } = await supabase.from('evaluations').insert({
+      instructor_id: instructorId, date, lesson_type: kind === 'group' ? '단체' : lessonType,
+      student_id: kind === 'individual' ? studentId : null, attended: kind === 'individual' ? attended : null,
+      group_id: kind === 'group' ? groupId : null, content: content.trim(),
+      next_goal: nextGoal.trim() || null, status: 'submitted',
+    })
+    if (err) { setError('저장 실패: ' + err.message); setSubmitting(false); return }
     onDone()
   }
 
   return (
-    <div className="px-5 py-4 rounded-2xl space-y-3" style={{ background: 'rgba(253,230,138,0.06)', border: '1px solid rgba(253,230,138,0.15)' }}>
-      <p className="text-sm font-bold" style={{ color: '#fde68a' }}>보강 수업 추가</p>
-      <CustomSelect
-        value={form.student_id}
-        onChange={v => setForm(f => ({ ...f, student_id: v }))}
-        placeholder="학생 선택 *"
-        options={students.map(s => ({ value: s.id, label: s.name }))}
-      />
-      <CustomSelect
-        value={form.instructor_id}
-        onChange={v => setForm(f => ({ ...f, instructor_id: v, subject_name: '' }))}
-        placeholder="강사 선택 *"
-        options={instructors.map(i => ({ value: i.id, label: i.name }))}
-      />
-      <SubjectSelect
-        value={form.subject_name}
-        onChange={v => setForm(f => ({ ...f, subject_name: v }))}
-        instructorId={form.instructor_id}
-      />
-      <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))}
-        className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-      <input type="time" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))}
-        className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-      <select value={form.duration_minutes} onChange={e => setForm(f => ({ ...f, duration_minutes: e.target.value }))}
-        className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
-        {[30, 45, 60, 90, 120].map(m => <option key={m} value={m}>{m}분</option>)}
-      </select>
-      <select value={form.lesson_type} onChange={e => setForm(f => ({ ...f, lesson_type: e.target.value }))}
-        className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
-        {LESSON_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-      </select>
-      <div className="flex gap-2">
-        <button onClick={onDone} className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-          style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}>취소</button>
-        <button onClick={save} disabled={saving} className="flex-1 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50"
-          style={{ background: 'rgba(253,230,138,0.2)', color: '#fde68a' }}>
-          {saving ? '저장 중...' : '추가'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── 평가서 ──────────────────────────────────────────────
-function ReportsView({ isAdmin, instructor }: { isAdmin: boolean; instructor: Instructor | null }) {
-  const [reports, setReports] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'pending' | 'approved'>('pending')
-
-  async function load() {
-    setLoading(true)
-    const query = supabase.from('class_reports')
-      .select('*, instructor:instructors(name), student:students(name), lesson:lessons(date, start_time, is_makeup)')
-      .order('date', { ascending: false })
-    if (filter === 'pending') query.is('admin_approved_at', null)
-    else query.not('admin_approved_at', 'is', null)
-    if (!isAdmin && instructor) query.eq('instructor_id', instructor.id)
-    const { data } = await query
-    setReports(data || [])
-    setLoading(false)
-  }
-
-  useEffect(() => { load() }, [filter, isAdmin, instructor])
-
-  async function approve(id: string) {
-    await supabase.from('class_reports').update({ admin_approved_at: new Date().toISOString() }).eq('id', id)
-    load()
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-white font-black text-xl">수업 평가서</p>
-        <div className="flex gap-2">
-          {(['pending', 'approved'] as const).map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-              className="text-xs font-bold px-3 py-1.5 rounded-xl"
-              style={{ background: filter === f ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)', color: filter === f ? '#a5b4fc' : 'rgba(255,255,255,0.35)' }}>
-              {f === 'pending' ? '미확인' : '확인완료'}
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:200, display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
+      <div style={{ background:'#141416', borderRadius:'16px 16px 0 0', padding:'20px 16px 32px', maxHeight:'90vh', overflowY:'auto' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
+          <div style={{ fontSize:16, fontWeight:800 }}>수업 추가</div>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:'#888', fontSize:22, cursor:'pointer', lineHeight:1 }}>×</button>
+        </div>
+        <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+          {(['individual','group'] as const).map(k => (
+            <button key={k} onClick={() => setKind(k)} style={{
+              flex:1, padding:'9px', borderRadius:8, border:`1px solid ${kind===k ? '#c0a060' : '#333'}`,
+              background: kind===k ? 'rgba(192,160,96,0.15)' : '#1a1a1c',
+              color: kind===k ? '#c0a060' : '#666', fontSize:13, fontWeight:700, cursor:'pointer',
+            }}>
+              {k === 'individual' ? '개인 레슨' : '단체 수업'}
             </button>
           ))}
         </div>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-10"><div className="w-6 h-6 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" /></div>
-      ) : reports.length === 0 ? (
-        <div className="py-12 text-center" style={{ color: 'rgba(255,255,255,0.25)' }}>
-          <p className="text-4xl mb-3">📋</p>
-          <p className="text-sm">{filter === 'pending' ? '미확인 평가서가 없어요' : '확인된 평가서가 없어요'}</p>
-        </div>
-      ) : (
-        reports.map(r => (
-          <div key={r.id} className="px-5 py-4 rounded-2xl space-y-3"
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-white font-bold">{r.student?.name}</span>
-                  {r.lesson?.is_makeup && <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(253,230,138,0.15)', color: '#fde68a' }}>보강</span>}
+        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+          <FormField label="날짜">
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} />
+          </FormField>
+          {kind === 'individual' && (
+            <>
+              <FormField label="학생 *">
+                <select value={studentId} onChange={e => setStudentId(e.target.value)} style={selectStyle}>
+                  <option value="">선택하세요</option>
+                  {myStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </FormField>
+              <FormField label="수업 종류">
+                <select value={lessonType} onChange={e => setLessonType(e.target.value as LessonType)} style={selectStyle}>
+                  {(['전공','부전공','전문반','취미'] as LessonType[]).map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </FormField>
+              <FormField label="출석">
+                <div style={{ display:'flex', gap:8 }}>
+                  {[true, false].map(v => (
+                    <button key={String(v)} onClick={() => setAttended(v)} style={{
+                      flex:1, padding:'8px', borderRadius:8,
+                      border:`1px solid ${attended===v ? (v ? '#60b080' : '#e07060') : '#333'}`,
+                      background: attended===v ? (v ? 'rgba(96,176,128,0.15)' : 'rgba(224,112,96,0.15)') : '#1a1a1c',
+                      color: attended===v ? (v ? '#60b080' : '#e07060') : '#666',
+                      fontSize:13, fontWeight:700, cursor:'pointer',
+                    }}>
+                      {v ? '출석' : '결석'}
+                    </button>
+                  ))}
                 </div>
-                <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                  {isAdmin ? r.instructor?.name + ' · ' : ''}{r.date} {r.lesson?.start_time?.slice(0, 5)}
-                </p>
-              </div>
-              {isAdmin && filter === 'pending' && (
-                <button onClick={() => approve(r.id)}
-                  className="text-xs font-bold px-4 py-2 rounded-xl active:scale-95"
-                  style={{ background: 'rgba(16,185,129,0.15)', color: '#6ee7b7', border: '1px solid rgba(16,185,129,0.25)' }}>
-                  ✓ 확인
-                </button>
-              )}
-              {filter === 'approved' && <span className="text-xs font-semibold px-3 py-1.5 rounded-xl" style={{ background: 'rgba(16,185,129,0.1)', color: '#6ee7b7' }}>✓</span>}
-            </div>
-            <div className="space-y-2 pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <div>
-                <p className="text-[10px] font-bold mb-1" style={{ color: 'rgba(255,255,255,0.3)' }}>수업 내용</p>
-                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.75)' }}>{r.content}</p>
-              </div>
-              {r.next_goal && <div><p className="text-[10px] font-bold mb-1" style={{ color: 'rgba(255,255,255,0.3)' }}>다음 목표</p><p className="text-sm" style={{ color: 'rgba(255,255,255,0.75)' }}>{r.next_goal}</p></div>}
-              {r.student_memo && <div><p className="text-[10px] font-bold mb-1" style={{ color: 'rgba(255,255,255,0.3)' }}>메모</p><p className="text-sm" style={{ color: 'rgba(255,255,255,0.75)' }}>{r.student_memo}</p></div>}
-            </div>
-          </div>
-        ))
-      )}
+              </FormField>
+            </>
+          )}
+          {kind === 'group' && (
+            <FormField label="단체수업 *">
+              <select value={groupId} onChange={e => setGroupId(e.target.value)} style={selectStyle}>
+                <option value="">선택하세요</option>
+                {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+            </FormField>
+          )}
+          <FormField label="수업 내용 *">
+            <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="오늘 수업에서 다룬 내용" rows={3}
+              style={{ background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
+          </FormField>
+          <FormField label="다음 목표">
+            <textarea value={nextGoal} onChange={e => setNextGoal(e.target.value)} placeholder="다음 수업 목표 (선택)" rows={2}
+              style={{ background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
+          </FormField>
+          {error && <div style={{ color:'#e07060', fontSize:12 }}>{error}</div>}
+          <button onClick={submit} disabled={submitting} style={{
+            background:'#c0a060', color:'#111', border:'none', borderRadius:9, padding:'12px', fontSize:14, fontWeight:800, cursor:'pointer', opacity: submitting ? 0.6 : 1,
+          }}>
+            {submitting ? '저장 중...' : '평가서 제출'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
 
-// ── 알림 ──────────────────────────────────────────────
-function NotifyView() {
-  const [messages, setMessages] = useState<{ instructor: string; phone: string; text: string }[]>([])
+// ── 강사: 평가서 목록 ─────────────────────────────────────────
+
+function EvalsView({ instructor }: { instructor: Instructor }) {
+  const [evals, setEvals] = useState<(Evaluation & { student?: Student; group?: GroupClass })[]>([])
   const [loading, setLoading] = useState(true)
-  const [sending, setSending] = useState(false)
-  const [sent, setSent] = useState(false)
 
   useEffect(() => {
-    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1)
-    const tomorrowStr = tomorrow.toISOString().split('T')[0]
-    const dayName = DAY_NAMES[tomorrow.getDay()]
+    supabase.from('evaluations')
+      .select('*, student:students(name), group:group_classes(name)')
+      .eq('instructor_id', instructor.id)
+      .order('date', { ascending:false })
+      .limit(60)
+      .then(({ data }) => { setEvals(data ?? []); setLoading(false) })
+  }, [instructor.id])
 
-    supabase.from('lessons')
-      .select('start_time, duration_minutes, is_makeup, student:students(name), instructor:instructors(name, phone)')
-      .eq('date', tomorrowStr).neq('status', 'cancelled').order('start_time')
-      .then(({ data }) => {
-        const grouped: Record<string, { instructor: string; phone: string; items: string[] }> = {}
-        ;(data || []).forEach((l: any) => {
-          const key = l.instructor?.name
-          if (!grouped[key]) grouped[key] = { instructor: key, phone: l.instructor?.phone, items: [] }
-          grouped[key].items.push(`${l.start_time?.slice(0, 5)} ${l.student?.name}${l.is_makeup ? ' (보강)' : ''}`)
-        })
-        setMessages(Object.values(grouped).map(g => ({
-          instructor: g.instructor, phone: g.phone,
-          text: `[KH Music & Studio]\n${g.instructor} 선생님, 내일(${tomorrowStr.slice(5).replace('-', '/')} ${dayName}) 수업 일정입니다.\n\n${g.items.join('\n')}\n\n확인 부탁드립니다 🎵`,
-        })))
-        setLoading(false)
-      })
-  }, [])
-
-  async function sendAll() {
-    setSending(true)
-    const res = await fetch('/api/notify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages }) })
-    setSending(false)
-    if (res.ok) setSent(true)
-    else alert('발송 오류가 발생했어요.')
-  }
-
-  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1)
+  if (loading) return <Spinner />
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-white font-black text-xl">수업 알림</p>
-          <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-            내일 {tomorrow.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}
-          </p>
-        </div>
-        {messages.length > 0 && !sent && (
-          <button onClick={sendAll} disabled={sending}
-            className="px-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 active:scale-95"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff' }}>
-            {sending ? '발송 중...' : `전체 발송 (${messages.length}명)`}
-          </button>
-        )}
-      </div>
-      {sent && (
-        <div className="px-5 py-4 rounded-2xl text-center" style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)' }}>
-          <p className="text-green-400 font-bold">✓ 알림톡 발송 완료</p>
-        </div>
-      )}
-      {loading ? (
-        <div className="flex justify-center py-10"><div className="w-6 h-6 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" /></div>
-      ) : messages.length === 0 ? (
-        <div className="py-12 text-center" style={{ color: 'rgba(255,255,255,0.25)' }}><p className="text-4xl mb-3">🔔</p><p className="text-sm">내일 수업이 없어요</p></div>
-      ) : (
-        messages.map((m, i) => (
-          <div key={i} className="px-5 py-4 rounded-2xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-white font-bold">{m.instructor} 선생님</span>
-              <span className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>{m.phone}</span>
-            </div>
-            <pre className="text-sm whitespace-pre-wrap" style={{ color: 'rgba(255,255,255,0.6)', fontFamily: 'inherit' }}>{m.text}</pre>
-          </div>
-        ))
-      )}
-    </div>
-  )
-}
-
-// ── 급여 ──────────────────────────────────────────────
-function PayrollView() {
-  const getDefaultDates = () => {
-    const now = new Date()
-    const start = new Date(now.getFullYear(), now.getMonth() - 1, 20)
-    const end = new Date(now.getFullYear(), now.getMonth(), 19)
-    return { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] }
-  }
-  const def = getDefaultDates()
-  const [startDate, setStartDate] = useState(def.start)
-  const [endDate, setEndDate] = useState(def.end)
-  const [data, setData] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [ratesOpen, setRatesOpen] = useState<string | null>(null)
-  const [ratesForm, setRatesForm] = useState<Record<string, string>>({})
-  const [ratesSaving, setRatesSaving] = useState(false)
-
-  async function openRates(instructorId: string) {
-    const { data } = await supabase.from('instructor_rates').select('*').eq('instructor_id', instructorId)
-    const init: Record<string, string> = {}
-    LESSON_TYPES.forEach(t => { init[t] = '' })
-    ;(data || []).forEach((r: any) => { init[r.lesson_type] = String(r.rate) })
-    setRatesForm(init); setRatesOpen(instructorId)
-  }
-
-  async function saveRates(instructorId: string) {
-    setRatesSaving(true)
-    for (const type of LESSON_TYPES) {
-      await supabase.from('instructor_rates').upsert(
-        { instructor_id: instructorId, lesson_type: type, rate: Number(ratesForm[type] || 0) },
-        { onConflict: 'instructor_id,lesson_type' }
-      )
-    }
-    setRatesSaving(false); setRatesOpen(null); load()
-  }
-
-  async function load() {
-    setLoading(true)
-    const [{ data: reports }, { data: rates }] = await Promise.all([
-      supabase.from('class_reports')
-        .select('instructor_id, instructor:instructors(name), student_id, student:students(name), date, lesson:lessons(lesson_type)')
-        .not('admin_approved_at', 'is', null)
-        .gte('date', startDate).lte('date', endDate),
-      supabase.from('instructor_rates').select('*'),
-    ])
-
-    const rateMap: Record<string, Record<string, number>> = {}
-    ;(rates || []).forEach((r: any) => {
-      if (!rateMap[r.instructor_id]) rateMap[r.instructor_id] = {}
-      rateMap[r.instructor_id][r.lesson_type] = r.rate
-    })
-
-    // instructorId → studentId → lessonType → dates[]
-    const iMap: Record<string, { name: string; sMap: Record<string, { name: string; tMap: Record<string, string[]> }> }> = {}
-    ;(reports || []).forEach((r: any) => {
-      const iid = r.instructor_id; const sid = r.student_id ?? 'group'
-      const ltype = r.lesson?.lesson_type ?? '취미반'; const date = r.date
-      if (!iMap[iid]) iMap[iid] = { name: r.instructor?.name ?? '', sMap: {} }
-      if (!iMap[iid].sMap[sid]) iMap[iid].sMap[sid] = { name: r.student?.name ?? '단체수업', tMap: {} }
-      if (!iMap[iid].sMap[sid].tMap[ltype]) iMap[iid].sMap[sid].tMap[ltype] = []
-      iMap[iid].sMap[sid].tMap[ltype].push(date)
-    })
-
-    const result = Object.entries(iMap).map(([iid, { name, sMap }]) => {
-      const rows = Object.entries(sMap).flatMap(([, { name: sname, tMap }]) =>
-        Object.entries(tMap).map(([ltype, dates]) => ({
-          studentName: sname, lessonType: ltype,
-          dates: [...dates].sort(),
-          rate: rateMap[iid]?.[ltype] ?? 0,
-          total: (rateMap[iid]?.[ltype] ?? 0) * dates.length,
-        }))
-      )
-      return { instructorId: iid, name, rows, grandTotal: rows.reduce((s, r) => s + r.total, 0) }
-    }).sort((a, b) => b.grandTotal - a.grandTotal)
-
-    setData(result); setLoading(false)
-  }
-
-  useEffect(() => { load() }, [startDate, endDate])
-
-  const totalPayroll = data.reduce((s, d) => s + d.grandTotal, 0)
-
-  return (
-    <div className="space-y-4">
-      <p className="text-white font-black text-xl">급여 정산</p>
-
-      {/* 정산기간 */}
-      <div className="px-5 py-4 rounded-2xl space-y-2" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-        <p className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.35)' }}>정산기간</p>
-        <div className="flex items-center gap-2">
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-            className="flex-1 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-          <span className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>~</span>
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-            className="flex-1 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-        </div>
-      </div>
-
-      {/* 총액 */}
-      <div className="px-5 py-4 rounded-2xl" style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}>
-        <p className="text-sm" style={{ color: 'rgba(255,255,255,0.5)' }}>총 급여</p>
-        <p className="text-3xl font-black text-white mt-1">{totalPayroll.toLocaleString()}원</p>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-10"><div className="w-6 h-6 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" /></div>
-      ) : data.length === 0 ? (
-        <div className="py-12 text-center" style={{ color: 'rgba(255,255,255,0.25)' }}><p className="text-sm">해당 기간에 확인된 수업이 없어요</p></div>
-      ) : data.map(d => (
-        <div key={d.instructorId} className="rounded-2xl overflow-hidden"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-
-          {/* 강사 헤더 */}
-          <div className="px-5 py-4 flex items-center justify-between">
-            <div>
-              <p className="text-white font-bold">{d.name} 선생님</p>
-              <p className="text-xl font-black mt-0.5" style={{ color: '#a5b4fc' }}>{d.grandTotal.toLocaleString()}원</p>
-            </div>
-            <button onClick={() => ratesOpen === d.instructorId ? setRatesOpen(null) : openRates(d.instructorId)}
-              className="text-xs px-2.5 py-1.5 rounded-lg"
-              style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc' }}>
-              단가 설정
-            </button>
-          </div>
-
-          {/* 단가 설정 폼 */}
-          {ratesOpen === d.instructorId && (
-            <div className="px-5 pb-4 space-y-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <p className="text-xs font-bold pt-3" style={{ color: 'rgba(255,255,255,0.4)' }}>강의료 단가 (1회당, 원)</p>
-              <div className="grid grid-cols-2 gap-2">
-                {LESSON_TYPES.map(t => (
-                  <div key={t}>
-                    <label className="text-[11px] mb-1 block" style={{ color: 'rgba(255,255,255,0.35)' }}>{t}</label>
-                    <input type="number" placeholder="0" value={ratesForm[t] || ''}
-                      onChange={e => setRatesForm(f => ({ ...f, [t]: e.target.value }))}
-                      className="w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
-                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-                  </div>
-                ))}
+    <div style={{ padding:'18px 16px' }}>
+      <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>평가서 목록</div>
+      {evals.length === 0 && <div style={{ textAlign:'center', color:'#555', padding:'40px 0', fontSize:13 }}>아직 작성한 평가서가 없어요</div>}
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {evals.map(ev => (
+          <div key={ev.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:14, fontWeight:700 }}>{(ev.student as any)?.name ?? (ev.group as any)?.name}</span>
+                <span style={{ fontSize:10, color:'#888', background:'#1e1e20', padding:'2px 6px', borderRadius:4 }}>{ev.lesson_type}</span>
               </div>
-              <button onClick={() => saveRates(d.instructorId)} disabled={ratesSaving}
-                className="w-full py-2.5 rounded-xl text-sm font-bold disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff' }}>
-                {ratesSaving ? '저장 중...' : '저장'}
-              </button>
+              <StatusBadge status={ev.status} />
             </div>
-          )}
-
-          {/* 급여 명세 */}
-          <div className="px-5 pb-4" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <p className="text-xs font-bold pt-3 mb-2" style={{ color: 'rgba(255,255,255,0.3)' }}>
-              급여 명세 ({startDate.slice(5).replace('-', '/')} ~ {endDate.slice(5).replace('-', '/')})
-            </p>
-            <div className="space-y-2">
-              {d.rows.map((row: any, idx: number) => (
-                <div key={idx} className="px-3 py-3 rounded-xl"
-                  style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-white">{row.studentName}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full"
-                        style={{ background: 'rgba(99,102,241,0.15)', color: '#a5b4fc' }}>{row.lessonType}</span>
-                    </div>
-                    <span className="text-sm font-bold" style={{ color: '#a5b4fc' }}>{row.total.toLocaleString()}원</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>
-                      {row.dates.map((d: string) => d.slice(5).replace('-', '/')).join(', ')}
-                    </p>
-                    <p className="text-[11px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                      {row.rate > 0 ? `${row.rate.toLocaleString()}원 × ${row.dates.length}회` : '단가 미설정'}
-                    </p>
-                  </div>
-                </div>
-              ))}
+            <div style={{ fontSize:11, color:'#666', marginBottom:6 }}>
+              {ev.date}
+              {ev.student_id && <span style={{ marginLeft:8, color: ev.attended ? '#60b080' : '#e07060' }}>{ev.attended ? '출석' : '결석'}</span>}
             </div>
+            <div style={{ fontSize:12, color:'#aaa', lineHeight:1.5 }}>{ev.content}</div>
+            {ev.next_goal && <div style={{ fontSize:11, color:'#888', marginTop:5 }}>다음: {ev.next_goal}</div>}
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   )
 }
 
-// ── 관리 ──────────────────────────────────────────────
-function ManageView() {
-  const [tab, setTab] = useState<'instructors' | 'students' | 'schedules'>('students')
-  const labels: [typeof tab, string][] = [
-    ['students', '학생 추가'],
-    ['instructors', '강사 추가'],
-    ['schedules', '정규 수업'],
-  ]
+// ── 강사: 내 학생 ─────────────────────────────────────────────
+
+function StudentsView({ instructor }: { instructor: Instructor }) {
+  const [assignments, setAssignments] = useState<(Assignment & { student: Student })[]>([])
+  const [groups, setGroups] = useState<(GroupClass & { group_students: { student: Student }[] })[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([
+      supabase.from('assignments').select('*, student:students(*)').eq('instructor_id', instructor.id).eq('is_active', true),
+      supabase.from('group_classes').select('*, group_students(student:students(*))').eq('instructor_id', instructor.id).eq('is_active', true),
+    ]).then(([asRes, gcRes]) => {
+      setAssignments((asRes.data ?? []) as any)
+      setGroups((gcRes.data ?? []) as any)
+      setLoading(false)
+    })
+  }, [instructor.id])
+
+  if (loading) return <Spinner />
+
   return (
-    <div className="space-y-4">
-      <p className="text-white font-black text-xl">관리</p>
-      <div className="flex gap-2">
-        {labels.map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className="flex-1 py-2.5 rounded-xl text-sm font-bold"
-            style={{ background: tab === k ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.05)', color: tab === k ? '#a5b4fc' : 'rgba(255,255,255,0.35)' }}>
-            {label}
+    <div style={{ padding:'18px 16px' }}>
+      <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>내 학생</div>
+      <div style={{ fontSize:12, color:'#888', fontWeight:700, marginBottom:8 }}>개인 레슨 ({assignments.length}명)</div>
+      <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:20 }}>
+        {assignments.map(a => (
+          <div key={a.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700 }}>{(a.student as any)?.name}</div>
+              {(a.student as any)?.phone && <div style={{ fontSize:11, color:'#666', marginTop:1 }}>{(a.student as any).phone}</div>}
+            </div>
+            <div style={{ textAlign:'right' }}>
+              <div style={{ fontSize:12, color:'#c0a060', fontWeight:600 }}>{a.lesson_type}</div>
+              {a.day_of_week != null && <div style={{ fontSize:11, color:'#666', marginTop:2 }}>{DAYS[a.day_of_week]} {a.start_time?.slice(0,5)}</div>}
+            </div>
+          </div>
+        ))}
+        {assignments.length === 0 && <div style={{ color:'#555', fontSize:13, padding:'8px 0' }}>배정된 학생이 없어요</div>}
+      </div>
+      <div style={{ fontSize:12, color:'#888', fontWeight:700, marginBottom:8 }}>단체수업 ({groups.length}개)</div>
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        {groups.map(g => (
+          <div key={g.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+              <div style={{ fontSize:14, fontWeight:700 }}>{g.name}</div>
+              {g.day_of_week != null && <div style={{ fontSize:11, color:'#888' }}>{DAYS[g.day_of_week]} {g.start_time?.slice(0,5)}</div>}
+            </div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+              {g.group_students?.map(gs => (
+                <span key={(gs.student as any).id} style={{ background:'#1e1e20', border:'1px solid #333', borderRadius:6, padding:'3px 9px', fontSize:12, color:'#bbb' }}>{(gs.student as any).name}</span>
+              ))}
+              {(!g.group_students || g.group_students.length === 0) && <span style={{ fontSize:12, color:'#555' }}>학생 없음</span>}
+            </div>
+          </div>
+        ))}
+        {groups.length === 0 && <div style={{ color:'#555', fontSize:13, padding:'8px 0' }}>담당 단체수업이 없어요</div>}
+      </div>
+    </div>
+  )
+}
+
+// ── 어드민: 평가서 승인 ───────────────────────────────────────
+
+function ApproveView() {
+  const [evals, setEvals] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<'submitted' | 'approved' | 'all'>('submitted')
+  const [approving, setApproving] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    let q = supabase.from('evaluations')
+      .select('*, instructor:instructors(name,grade), student:students(name), group:group_classes(name)')
+      .order('date', { ascending:false }).limit(100)
+    if (filter !== 'all') q = q.eq('status', filter)
+    const { data } = await q
+    setEvals(data ?? [])
+    setLoading(false)
+  }, [filter])
+
+  useEffect(() => { load() }, [load])
+
+  async function approve(id: string) {
+    setApproving(id)
+    await supabase.from('evaluations').update({ status:'approved', approved_at:new Date().toISOString() }).eq('id', id)
+    await load()
+    setApproving(null)
+  }
+
+  return (
+    <div style={{ padding:'18px 16px' }}>
+      <div style={{ fontSize:18, fontWeight:800, marginBottom:14 }}>평가서 승인</div>
+      <div style={{ display:'flex', gap:6, marginBottom:16 }}>
+        {(['submitted','approved','all'] as const).map(f => (
+          <button key={f} onClick={() => setFilter(f)} style={{
+            padding:'6px 13px', borderRadius:7, border:`1px solid ${filter===f ? '#c0a060' : '#333'}`,
+            background: filter===f ? 'rgba(192,160,96,0.15)' : '#141416',
+            color: filter===f ? '#c0a060' : '#666', fontSize:12, fontWeight:600, cursor:'pointer',
+          }}>
+            {f === 'submitted' ? '검토중' : f === 'approved' ? '승인됨' : '전체'}
           </button>
         ))}
       </div>
-      {tab === 'instructors' && <InstructorManager />}
-      {tab === 'students'    && <StudentManager />}
-      {tab === 'schedules'   && <ScheduleManager />}
-    </div>
-  )
-}
-
-function InstructorManager() {
-  const [list, setList] = useState<any[]>([])
-  const [form, setForm] = useState({ name: '', phone: '', email: '' })
-  const [adding, setAdding] = useState(false)
-  const [open, setOpen] = useState(false)
-  const [ratesOpen, setRatesOpen] = useState<string | null>(null)
-  const [ratesForm, setRatesForm] = useState<Record<string, string>>({})
-  const [ratesSaving, setRatesSaving] = useState(false)
-
-  async function load() {
-    const { data } = await supabase.from('instructors').select('*').order('name')
-    setList(data || [])
-  }
-  useEffect(() => { load() }, [])
-
-  async function add() {
-    if (!form.name || !form.phone) { alert('이름과 전화번호를 입력해주세요.'); return }
-    setAdding(true)
-    const { error } = await supabase.from('instructors').insert({
-      name: form.name, phone: form.phone, email: form.email || null, is_active: true,
-    })
-    if (error) { alert('오류: ' + error.message); setAdding(false); return }
-    setForm({ name: '', phone: '', email: '' })
-    setOpen(false); setAdding(false); load()
-  }
-
-  async function openRates(instructorId: string) {
-    const { data } = await supabase.from('instructor_rates').select('*').eq('instructor_id', instructorId)
-    const init: Record<string, string> = {}
-    LESSON_TYPES.forEach(t => { init[t] = '' })
-    ;(data || []).forEach((r: any) => { init[r.lesson_type] = String(r.rate) })
-    setRatesForm(init)
-    setRatesOpen(instructorId)
-  }
-
-  async function saveRates(instructorId: string) {
-    setRatesSaving(true)
-    for (const type of LESSON_TYPES) {
-      const rate = Number(ratesForm[type] || 0)
-      await supabase.from('instructor_rates').upsert(
-        { instructor_id: instructorId, lesson_type: type, rate },
-        { onConflict: 'instructor_id,lesson_type' }
-      )
-    }
-    setRatesSaving(false)
-    setRatesOpen(null)
-  }
-
-  async function toggleActive(id: string, current: boolean) {
-    await supabase.from('instructors').update({ is_active: !current }).eq('id', id)
-    load()
-  }
-
-  async function deleteInstructor(id: string, name: string) {
-    if (!confirm(`${name} 강사를 삭제할까요?\n수업 기록이 있으면 삭제되지 않아요.`)) return
-    await supabase.from('instructor_rates').delete().eq('instructor_id', id)
-    const { error } = await supabase.from('instructors').delete().eq('id', id)
-    if (error) { alert('삭제 실패: 이 강사에 연결된 수업 기록이 있어요.'); return }
-    load()
-  }
-
-  return (
-    <div className="space-y-3">
-      <button onClick={() => setOpen(o => !o)}
-        className="w-full py-3 rounded-2xl text-sm font-bold"
-        style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc', border: '1px dashed rgba(99,102,241,0.3)' }}>
-        + 강사 추가
-      </button>
-      {open && (
-        <div className="px-5 py-4 rounded-2xl space-y-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          {[['name', '이름 *', 'text'], ['phone', '전화번호 *', 'text'], ['email', '이메일 (로그인용)', 'email']].map(([k, ph, type]) => (
-            <input key={k} placeholder={ph} value={(form as any)[k]} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
-              type={type}
-              className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-          ))}
-          <button onClick={add} disabled={adding}
-            className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff' }}>
-            {adding ? '추가 중...' : '추가'}
-          </button>
-        </div>
-      )}
-      {list.map(i => (
-        <div key={i.id} className="rounded-2xl overflow-hidden"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          <div className="px-5 py-4 flex items-center justify-between">
-            <div>
-              <p className="text-white font-semibold">{i.name}</p>
-              <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>{i.phone}</p>
-              {i.email && <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.25)' }}>{i.email}</p>}
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => ratesOpen === i.id ? setRatesOpen(null) : openRates(i.id)}
-                className="text-xs px-2 py-1 rounded-lg"
-                style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc' }}>
-                단가 설정
-              </button>
-              <button onClick={() => toggleActive(i.id, i.is_active)}
-                className="text-xs px-2 py-1 rounded-lg"
-                style={{ background: i.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)', color: i.is_active ? '#6ee7b7' : 'rgba(255,255,255,0.3)' }}>
-                {i.is_active ? '활성' : '비활성'}
-              </button>
-              <button onClick={() => deleteInstructor(i.id, i.name)}
-                className="text-xs px-2 py-1 rounded-lg"
-                style={{ background: 'rgba(239,68,68,0.08)', color: 'rgba(248,113,113,0.6)' }}>
-                삭제
-              </button>
-            </div>
-          </div>
-          {ratesOpen === i.id && (
-            <div className="px-5 pb-4 space-y-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-              <p className="text-xs font-bold pt-3 mb-3" style={{ color: 'rgba(255,255,255,0.4)' }}>수업 타입별 단가 (원/회)</p>
-              <div className="grid grid-cols-2 gap-2">
-                {LESSON_TYPES.map(t => (
-                  <div key={t}>
-                    <label className="text-[11px] mb-1 block" style={{ color: 'rgba(255,255,255,0.35)' }}>{t}</label>
-                    <input type="number" placeholder="0" value={ratesForm[t] || ''}
-                      onChange={e => setRatesForm(f => ({ ...f, [t]: e.target.value }))}
-                      className="w-full rounded-lg px-3 py-2 text-sm text-white focus:outline-none"
-                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-                  </div>
-                ))}
+      {loading ? <Spinner /> : (
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          {evals.length === 0 && <div style={{ textAlign:'center', color:'#555', padding:'40px 0', fontSize:13 }}>평가서가 없어요</div>}
+          {evals.map(ev => (
+            <div key={ev.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'13px 14px' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:5 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  {ev.instructor && <Badge grade={ev.instructor.grade as Grade} />}
+                  <span style={{ fontSize:14, fontWeight:700 }}>{ev.instructor?.name}</span>
+                  <span style={{ fontSize:12, color:'#888' }}>→ {ev.student?.name ?? ev.group?.name}</span>
+                </div>
+                {ev.status === 'approved' ? (
+                  <StatusBadge status="approved" />
+                ) : (
+                  <button onClick={() => approve(ev.id)} disabled={approving === ev.id} style={{
+                    background:'#c0a060', color:'#111', border:'none', borderRadius:7, padding:'5px 13px', fontSize:12, fontWeight:700, cursor:'pointer', opacity: approving===ev.id ? 0.6 : 1,
+                  }}>
+                    {approving === ev.id ? '...' : '승인'}
+                  </button>
+                )}
               </div>
-              <button onClick={() => saveRates(i.id)} disabled={ratesSaving}
-                className="w-full py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 mt-2"
-                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff' }}>
-                {ratesSaving ? '저장 중...' : '저장'}
-              </button>
+              <div style={{ fontSize:11, color:'#666', marginBottom:6 }}>
+                {ev.date} · {ev.lesson_type}
+                {ev.student_id && <span style={{ marginLeft:8, color: ev.attended ? '#60b080' : '#e07060' }}>{ev.attended ? '출석' : '결석'}</span>}
+              </div>
+              <div style={{ fontSize:12, color:'#aaa', lineHeight:1.5 }}>{ev.content}</div>
+              {ev.next_goal && <div style={{ fontSize:11, color:'#666', marginTop:4 }}>다음: {ev.next_goal}</div>}
             </div>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function StudentManager() {
-  const [list, setList] = useState<any[]>([])
-  const [form, setForm] = useState({
-    name: '', phone: '', parent_phone: '', student_type: '',
-    school: '', age_note: '', enrollment_date: '',
-  })
-  const [adding, setAdding] = useState(false)
-  const [open, setOpen] = useState(false)
-
-  async function load() {
-    const { data } = await supabase.from('students').select('*').order('name')
-    setList(data || [])
-  }
-  useEffect(() => { load() }, [])
-
-  async function add() {
-    if (!form.name) { alert('이름을 입력해주세요.'); return }
-    setAdding(true)
-    const { error } = await supabase.from('students').insert({
-      name: form.name,
-      phone: form.phone || null,
-      parent_phone: form.parent_phone || null,
-      student_type: form.student_type || null,
-      school: form.school || null,
-      age_note: form.age_note || null,
-      enrollment_date: form.enrollment_date || null,
-      instructor_id: null, is_active: true,
-    })
-    if (error) { alert('오류: ' + error.message); setAdding(false); return }
-    setForm({ name: '', phone: '', parent_phone: '', student_type: '', school: '', age_note: '', enrollment_date: '' })
-    setOpen(false); setAdding(false); load()
-  }
-
-  const inp = (placeholder: string, key: keyof typeof form, type = 'text') => (
-    <input placeholder={placeholder} value={form[key]} type={type}
-      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-      className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-  )
-
-  return (
-    <div className="space-y-3">
-      <button onClick={() => setOpen(o => !o)}
-        className="w-full py-3 rounded-2xl text-sm font-bold"
-        style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc', border: '1px dashed rgba(99,102,241,0.3)' }}>
-        + 학생 추가
-      </button>
-      {open && (
-        <div className="px-5 py-4 rounded-2xl space-y-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          {inp('이름 *', 'name')}
-          {inp('전화번호 (본인)', 'phone')}
-          {inp('전화번호 (어머니 / 보호자)', 'parent_phone')}
-          <CustomSelect value={form.student_type} onChange={v => setForm(f => ({ ...f, student_type: v }))}
-            placeholder="반 (입시반 / 취미반 등)"
-            options={STUDENT_TYPES.map(t => ({ value: t, label: t }))} />
-          {inp('학교', 'school')}
-          {inp('나이 / 학년 (예: 19세 고3)', 'age_note')}
-          <div>
-            <label className="text-xs mb-1 block" style={{ color: 'rgba(255,255,255,0.4)' }}>등록일</label>
-            {inp('', 'enrollment_date', 'date')}
-          </div>
-          <button onClick={add} disabled={adding}
-            className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff' }}>
-            {adding ? '추가 중...' : '추가'}
-          </button>
+          ))}
         </div>
       )}
-      {list.map(s => <StudentCard key={s.id} student={s} onReload={load} />)}
     </div>
   )
 }
 
-function StudentCard({ student, onReload }: { student: any; onReload: () => void }) {
-  const [schedules, setSchedules] = useState<any[]>([])
-  const [instructors, setInstructors] = useState<any[]>([])
-  const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ instructor_id: '', subject_name: '', lesson_type: '취미반', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '' })
-  const [saving, setSaving] = useState(false)
+// ── 어드민: 급여 정산 ─────────────────────────────────────────
 
-  async function loadSchedules() {
-    const [{ data: sc }, { data: ins }] = await Promise.all([
-      supabase.from('lesson_schedules').select('*, instructor:instructors(name)').eq('student_id', student.id).eq('is_active', true).order('day_of_week').order('start_time'),
-      supabase.from('instructors').select('id, name').eq('is_active', true).order('name'),
+interface PayrollLine { lesson_type: LessonType; count: number; rate: number; subtotal: number }
+interface InstructorPayroll {
+  instructor: Instructor
+  lines: PayrollLine[]
+  total_before: number
+  tax: number
+  total_after: number
+}
+
+function PayrollView() {
+  const range = getDefaultPayrollRange()
+  const [startDate, setStartDate] = useState(range.start)
+  const [endDate, setEndDate]     = useState(range.end)
+  const [payrolls, setPayrolls]   = useState<InstructorPayroll[]>([])
+  const [loading, setLoading]     = useState(false)
+  const [expanded, setExpanded]   = useState<string | null>(null)
+  const [calculated, setCalculated] = useState(false)
+
+  async function calculate() {
+    setLoading(true)
+    const [evRes, instrRes, rateRes] = await Promise.all([
+      supabase.from('evaluations').select('*').eq('status','approved').gte('date', startDate).lte('date', endDate),
+      supabase.from('instructors').select('*').eq('is_active', true),
+      supabase.from('grade_rates').select('*'),
     ])
-    setSchedules(sc || []); setInstructors(ins || [])
-  }
+    const allEvals: Evaluation[]   = evRes.data ?? []
+    const instructors: Instructor[] = instrRes.data ?? []
+    const rates: GradeRate[]       = rateRes.data ?? []
+    const rateMap = new Map<string, number>()
+    rates.forEach(r => rateMap.set(`${r.grade}:${r.lesson_type}`, r.rate))
 
-  useEffect(() => { loadSchedules() }, [])
-
-  async function addSchedule() {
-    if (!form.instructor_id || !form.start_time || !form.start_date) { alert('강사, 시간, 시작일을 입력해주세요.'); return }
-    setSaving(true)
-    const { error } = await supabase.from('lesson_schedules').insert({
-      student_id: student.id, instructor_id: form.instructor_id,
-      day_of_week: Number(form.day_of_week), start_time: form.start_time,
-      duration_minutes: Number(form.duration_minutes), start_date: form.start_date,
-      lesson_type: form.lesson_type, subject_name: form.subject_name || null, is_active: true,
-    })
-    setSaving(false)
-    if (error) { alert('오류: ' + error.message); return }
-    setForm({ instructor_id: '', subject_name: '', lesson_type: '취미반', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '' })
-    setShowAdd(false); loadSchedules()
-  }
-
-  async function endSchedule(id: string) {
-    if (!confirm('이 수업을 종료할까요?')) return
-    await supabase.from('lesson_schedules').update({ is_active: false }).eq('id', id)
-    loadSchedules()
-  }
-
-  async function toggleActive() {
-    await supabase.from('students').update({ is_active: !student.is_active }).eq('id', student.id)
-    onReload()
-  }
-
-  async function deleteStudent() {
-    if (!confirm(`${student.name} 학생을 삭제할까요?\n수업 기록이 있으면 삭제되지 않아요.`)) return
-    const { error } = await supabase.from('students').delete().eq('id', student.id)
-    if (error) { alert('삭제 실패: 이 학생에 연결된 수업 기록이 있어요.'); return }
-    onReload()
+    const result: InstructorPayroll[] = []
+    for (const instr of instructors) {
+      const myEvals = allEvals.filter(e => {
+        if (e.instructor_id !== instr.id) return false
+        if (e.student_id && e.attended === false) return false
+        return true
+      })
+      if (myEvals.length === 0) continue
+      const counts = new Map<LessonType, number>()
+      for (const ev of myEvals) counts.set(ev.lesson_type, (counts.get(ev.lesson_type) ?? 0) + 1)
+      const lines: PayrollLine[] = []
+      counts.forEach((count, lt) => {
+        const rate = rateMap.get(`${instr.grade}:${lt}`) ?? 0
+        lines.push({ lesson_type:lt, count, rate, subtotal:count*rate })
+      })
+      lines.sort((a, b) => LESSON_TYPES.indexOf(a.lesson_type) - LESSON_TYPES.indexOf(b.lesson_type))
+      const total_before = lines.reduce((s, l) => s + l.subtotal, 0)
+      const tax = Math.round(total_before * 0.033)
+      result.push({ instructor:instr, lines, total_before, tax, total_after:total_before - tax })
+    }
+    result.sort((a, b) => b.total_before - a.total_before)
+    setPayrolls(result)
+    setCalculated(true)
+    setLoading(false)
   }
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-      {/* 학생 헤더 */}
-      <div className="px-5 py-4 flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="text-white font-semibold">{student.name}</p>
-            {student.student_type && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold shrink-0"
-                style={{ background: 'rgba(99,102,241,0.18)', color: '#a5b4fc' }}>
-                {student.student_type}
-              </span>
-            )}
-            {student.age_note && (
-              <span className="text-[10px] shrink-0" style={{ color: 'rgba(255,255,255,0.4)' }}>{student.age_note}</span>
-            )}
+    <div style={{ padding:'18px 16px' }}>
+      <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>급여 정산</div>
+      <div style={{ background:'#141416', borderRadius:12, border:'1px solid #222', padding:'14px', marginBottom:16 }}>
+        <div style={{ display:'flex', gap:10, alignItems:'flex-end' }}>
+          <div style={{ flex:1 }}>
+            <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>시작</label>
+            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle} />
           </div>
-          <div className="mt-1 space-y-0.5">
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-              {student.phone && (
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>{student.phone} 본인</p>
-              )}
-              {student.parent_phone && (
-                <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>{student.parent_phone} 어머니</p>
-              )}
-            </div>
-            {student.school && (
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.3)' }}>{student.school}</p>
-            )}
-            {student.enrollment_date && (
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                등록일 {student.enrollment_date}
-              </p>
-            )}
+          <div style={{ flex:1 }}>
+            <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>종료</label>
+            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputStyle} />
           </div>
-        </div>
-        <div className="flex gap-2 shrink-0">
-          <button onClick={toggleActive} className="text-xs px-2 py-1 rounded-lg"
-            style={{ background: student.is_active ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)', color: student.is_active ? '#6ee7b7' : 'rgba(255,255,255,0.3)' }}>
-            {student.is_active ? '활성' : '비활성'}
-          </button>
-          <button onClick={deleteStudent} className="text-xs px-2 py-1 rounded-lg"
-            style={{ background: 'rgba(239,68,68,0.08)', color: 'rgba(248,113,113,0.6)' }}>
-            삭제
+          <button onClick={calculate} disabled={loading} style={{
+            background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'9px 16px',
+            fontSize:13, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', opacity: loading ? 0.7 : 1,
+          }}>
+            {loading ? '계산중' : '정산'}
           </button>
         </div>
       </div>
 
-      {/* 수업 목록 – 항상 표시 */}
-      <div className="px-5 pb-4 space-y-2" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-        {schedules.length === 0 ? (
-          <p className="text-xs pt-3" style={{ color: 'rgba(255,255,255,0.2)' }}>등록된 수업이 없어요</p>
-        ) : (
-          <div className="pt-2 space-y-1.5">
-            {schedules.map(sc => (
-              <div key={sc.id} className="flex items-center justify-between py-2.5 px-3 rounded-xl"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.04)' }}>
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-white">{sc.subject_name || sc.lesson_type}</span>
-                    <span className="text-xs font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>{sc.instructor?.name} 선생님</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full"
-                      style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc' }}>{sc.lesson_type}</span>
+      {payrolls.length > 0 && (
+        <>
+          <div style={{ background:'rgba(192,160,96,0.1)', border:'1px solid rgba(192,160,96,0.3)', borderRadius:10, padding:'12px 14px', marginBottom:14 }}>
+            <div style={{ fontSize:11, color:'#c0a060', fontWeight:700, marginBottom:8 }}>
+              전체 급여 합계 · {startDate} ~ {endDate}
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+              <span style={{ fontSize:12, color:'#888' }}>세전 합계</span>
+              <span style={{ fontSize:13, fontWeight:600 }}>{fmt만원(payrolls.reduce((s,p) => s+p.total_before, 0))}</span>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+              <span style={{ fontSize:12, color:'#888' }}>원천징수(3.3%)</span>
+              <span style={{ fontSize:13, fontWeight:600, color:'#e07060' }}>-{fmt만원(payrolls.reduce((s,p) => s+p.tax, 0))}</span>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', paddingTop:6, borderTop:'1px solid rgba(192,160,96,0.2)' }}>
+              <span style={{ fontSize:13, fontWeight:700, color:'#c0a060' }}>지급 합계</span>
+              <span style={{ fontSize:15, fontWeight:800, color:'#c0a060' }}>{fmt만원(payrolls.reduce((s,p) => s+p.total_after, 0))}</span>
+            </div>
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {payrolls.map(p => (
+              <div key={p.instructor.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', overflow:'hidden' }}>
+                <div onClick={() => setExpanded(expanded === p.instructor.id ? null : p.instructor.id)}
+                  style={{ padding:'13px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <Badge grade={p.instructor.grade} />
+                    <span style={{ fontSize:14, fontWeight:700 }}>{p.instructor.name}</span>
+                    <span style={{ fontSize:11, color:'#666' }}>{p.lines.reduce((s,l) => s+l.count, 0)}회</span>
                   </div>
-                  <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.25)' }}>
-                    {DAY_NAMES[sc.day_of_week]}요일 {sc.start_time?.slice(0, 5)} · {sc.duration_minutes}분
-                  </p>
+                  <div style={{ textAlign:'right' }}>
+                    <div style={{ fontSize:14, fontWeight:800, color:'#c0a060' }}>{fmt만원(p.total_after)}</div>
+                    <div style={{ fontSize:10, color:'#666' }}>세후</div>
+                  </div>
                 </div>
-                <button onClick={() => endSchedule(sc.id)} className="text-[10px] px-2 py-1 rounded-lg ml-2 shrink-0"
-                  style={{ background: 'rgba(239,68,68,0.08)', color: 'rgba(248,113,113,0.5)' }}>종료</button>
+                {expanded === p.instructor.id && (
+                  <div style={{ borderTop:'1px solid #222', padding:'12px 14px', background:'#111113' }}>
+                    {p.lines.map(l => (
+                      <div key={l.lesson_type} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'4px 0' }}>
+                        <span style={{ fontSize:12, color:'#aaa', width:50 }}>{l.lesson_type}</span>
+                        <span style={{ fontSize:12, color:'#888' }}>{l.count}회 × {fmt만원(l.rate)}</span>
+                        <span style={{ fontSize:12, fontWeight:600 }}>{fmt만원(l.subtotal)}</span>
+                      </div>
+                    ))}
+                    <div style={{ borderTop:'1px solid #222', marginTop:8, paddingTop:8 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#888', marginBottom:3 }}>
+                        <span>세전</span><span>{fmt만원(p.total_before)}</span>
+                      </div>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#e07060', marginBottom:3 }}>
+                        <span>원천징수(3.3%)</span><span>-{fmt만원(p.tax)}</span>
+                      </div>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:14, fontWeight:800, color:'#c0a060', marginTop:6 }}>
+                        <span>지급액(세후)</span><span>{fmt만원(p.total_after)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
-        )}
-
-        {showAdd ? (
-          <div className="space-y-2 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <p className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.35)' }}>수업 추가</p>
-            <CustomSelect value={form.lesson_type} onChange={v => setForm(f => ({ ...f, lesson_type: v }))}
-              placeholder="수업 종류" options={LESSON_TYPES.filter(t => t !== '단체수업').map(t => ({ value: t, label: t }))} />
-            <CustomSelect value={form.instructor_id} onChange={v => setForm(f => ({ ...f, instructor_id: v, subject_name: '' }))}
-              placeholder="담당 강사 선택 *" options={instructors.map(i => ({ value: i.id, label: i.name }))} />
-            <SubjectSelect value={form.subject_name} onChange={v => setForm(f => ({ ...f, subject_name: v }))} instructorId={form.instructor_id} />
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <CustomSelect value={form.day_of_week} onChange={v => setForm(f => ({ ...f, day_of_week: v }))}
-                  placeholder="요일" options={DAY_NAMES.map((d, i) => ({ value: String(i), label: `${d}요일` }))} />
-              </div>
-              <input type="time" value={form.start_time} onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))}
-                className="flex-1 rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-            </div>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <select value={form.duration_minutes} onChange={e => setForm(f => ({ ...f, duration_minutes: e.target.value }))}
-                  className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
-                  {[30, 45, 60, 90, 120].map(m => <option key={m} value={m}>{m}분</option>)}
-                </select>
-              </div>
-              <input type="date" value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
-                className="flex-1 rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setShowAdd(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-                style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}>취소</button>
-              <button onClick={addSchedule} disabled={saving} className="flex-1 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff' }}>
-                {saving ? '저장 중...' : '추가'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button onClick={() => setShowAdd(true)} className="w-full py-2.5 rounded-xl text-sm font-bold mt-1"
-            style={{ background: 'rgba(99,102,241,0.08)', color: '#a5b4fc', border: '1px dashed rgba(99,102,241,0.2)' }}>
-            + 수업 추가
-          </button>
-        )}
-      </div>
+        </>
+      )}
+      {!loading && calculated && payrolls.length === 0 && (
+        <div style={{ textAlign:'center', color:'#555', padding:'30px 0', fontSize:13 }}>해당 기간에 승인된 수업이 없어요</div>
+      )}
+      {!loading && !calculated && (
+        <div style={{ textAlign:'center', color:'#555', padding:'40px 0', fontSize:13 }}>기간을 설정하고 정산 버튼을 눌러주세요</div>
+      )}
     </div>
   )
 }
 
-function ScheduleManager() {
-  const [list, setList] = useState<any[]>([])
-  const [students, setStudents] = useState<any[]>([])
-  const [instructors, setInstructors] = useState<any[]>([])
-  const [open, setOpen] = useState(false)
-  const [adding, setAdding] = useState(false)
-  const [form, setForm] = useState({
-    lesson_type: '전공실기', student_id: '', instructor_id: '',
-    subject_name: '', day_of_week: '1', start_time: '',
-    duration_minutes: '60', start_date: '',
-  })
+// ── 어드민: 관리 ──────────────────────────────────────────────
 
-  async function load() {
-    const [{ data: sc }, { data: st }, { data: ins }] = await Promise.all([
-      supabase.from('lesson_schedules').select('*, student:students(name), instructor:instructors(name)').eq('is_active', true).order('day_of_week').order('start_time'),
-      supabase.from('students').select('id, name').eq('is_active', true).order('name'),
-      supabase.from('instructors').select('id, name').eq('is_active', true).order('name'),
-    ])
-    setList(sc || []); setStudents(st || []); setInstructors(ins || [])
-  }
-  useEffect(() => { load() }, [])
+type ManageTab = 'instructors' | 'students' | 'assignments' | 'groups' | 'rates'
 
-  const isGroup = form.lesson_type === '단체수업'
+function ManageView() {
+  const [subTab, setSubTab] = useState<ManageTab>('instructors')
+  const subTabs: { id: ManageTab; label: string }[] = [
+    { id:'instructors', label:'강사' },
+    { id:'students',    label:'학생' },
+    { id:'assignments', label:'배정' },
+    { id:'groups',      label:'단체' },
+    { id:'rates',       label:'단가' },
+  ]
+  return (
+    <div style={{ padding:'18px 16px' }}>
+      <div style={{ fontSize:18, fontWeight:800, marginBottom:14 }}>관리</div>
+      <div style={{ display:'flex', gap:6, marginBottom:18, overflowX:'auto', paddingBottom:4 }}>
+        {subTabs.map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)} style={{
+            padding:'6px 14px', borderRadius:7, border:`1px solid ${subTab===t.id ? '#c0a060' : '#333'}`,
+            background: subTab===t.id ? 'rgba(192,160,96,0.15)' : '#141416',
+            color: subTab===t.id ? '#c0a060' : '#888', fontSize:12, fontWeight:600, cursor:'pointer', whiteSpace:'nowrap', flexShrink:0,
+          }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {subTab === 'instructors'  && <InstructorsManage />}
+      {subTab === 'students'     && <StudentsManage />}
+      {subTab === 'assignments'  && <AssignmentsManage />}
+      {subTab === 'groups'       && <GroupsManage />}
+      {subTab === 'rates'        && <RatesManage />}
+    </div>
+  )
+}
 
-  async function add() {
-    if (!form.instructor_id || !form.start_time || !form.start_date) {
-      alert('강사, 시간, 시작일을 입력해주세요.'); return
+// ── 강사 관리 ──────────────────────────────────────────────────
+
+function InstructorsManage() {
+  const [instructors, setInstructors] = useState<Instructor[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [showForm, setShowForm]       = useState(false)
+  const [editing, setEditing]         = useState<Instructor | null>(null)
+  const [form, setForm]               = useState({ name:'', phone:'', email:'', grade:'B' as Grade })
+  const [saving, setSaving]           = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase.from('instructors').select('*').order('name')
+    setInstructors(data ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  function openNew() { setEditing(null); setForm({ name:'', phone:'', email:'', grade:'B' }); setShowForm(true) }
+  function openEdit(i: Instructor) { setEditing(i); setForm({ name:i.name, phone:i.phone, email:i.email??'', grade:i.grade }); setShowForm(true) }
+
+  async function save() {
+    setSaving(true)
+    if (editing) {
+      await supabase.from('instructors').update({ name:form.name, phone:form.phone, email:form.email||null, grade:form.grade }).eq('id', editing.id)
+    } else {
+      await supabase.from('instructors').insert({ name:form.name, phone:form.phone, email:form.email||null, grade:form.grade })
     }
-    if (!isGroup && !form.student_id) { alert('학생을 선택해주세요.'); return }
-    setAdding(true)
-    const { error } = await supabase.from('lesson_schedules').insert({
-      student_id: isGroup ? null : form.student_id,
-      instructor_id: form.instructor_id,
-      day_of_week: Number(form.day_of_week),
-      start_time: form.start_time,
-      duration_minutes: Number(form.duration_minutes),
-      start_date: form.start_date,
-      lesson_type: form.lesson_type,
-      subject_name: form.subject_name || null,
-      is_active: true,
+    await load(); setSaving(false); setShowForm(false)
+  }
+
+  async function toggleActive(i: Instructor) {
+    await supabase.from('instructors').update({ is_active:!i.is_active }).eq('id', i.id)
+    await load()
+  }
+
+  if (loading) return <Spinner />
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+        <button onClick={openNew} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 강사 추가</button>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {instructors.map(i => (
+          <div key={i.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', opacity: i.is_active ? 1 : 0.5 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <Badge grade={i.grade} />
+              <div>
+                <div style={{ fontSize:14, fontWeight:700 }}>{i.name}</div>
+                <div style={{ fontSize:11, color:'#666', marginTop:1 }}>{i.phone}</div>
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:7 }}>
+              <button onClick={() => openEdit(i)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>수정</button>
+              <button onClick={() => toggleActive(i)} style={{ background:'#1e1e22', border:'1px solid #333', color: i.is_active ? '#e07060' : '#60b080', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>
+                {i.is_active ? '비활성' : '활성'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {showForm && (
+        <BottomSheet title={editing ? '강사 수정' : '강사 추가'} onClose={() => setShowForm(false)}>
+          <FormField label="이름 *"><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="강사명" /></FormField>
+          <FormField label="연락처 *"><input value={form.phone} onChange={e => setForm(f=>({...f,phone:e.target.value}))} style={inputStyle} placeholder="010-0000-0000" /></FormField>
+          <FormField label="이메일"><input value={form.email} onChange={e => setForm(f=>({...f,email:e.target.value}))} style={inputStyle} placeholder="이메일 (선택)" /></FormField>
+          <FormField label="등급">
+            <div style={{ display:'flex', gap:6 }}>
+              {GRADES.map(g => (
+                <button key={g} onClick={() => setForm(f=>({...f,grade:g}))} style={{
+                  flex:1, padding:'8px', borderRadius:8, border:`1px solid ${form.grade===g ? GRADE_COLOR[g] : '#333'}`,
+                  background: form.grade===g ? `${GRADE_COLOR[g]}22` : '#1a1a1c',
+                  color: form.grade===g ? GRADE_COLOR[g] : '#666', fontSize:13, fontWeight:700, cursor:'pointer',
+                }}>
+                  {g}
+                </button>
+              ))}
+            </div>
+          </FormField>
+          <SaveButton onClick={save} loading={saving} />
+        </BottomSheet>
+      )}
+    </div>
+  )
+}
+
+// ── 학생 관리 ──────────────────────────────────────────────────
+
+function StudentsManage() {
+  const [students, setStudents]   = useState<Student[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [showForm, setShowForm]   = useState(false)
+  const [editing, setEditing]     = useState<Student | null>(null)
+  const [form, setForm]           = useState({ name:'', phone:'' })
+  const [saving, setSaving]       = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase.from('students').select('*').order('name')
+    setStudents(data ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  function openNew() { setEditing(null); setForm({ name:'', phone:'' }); setShowForm(true) }
+  function openEdit(s: Student) { setEditing(s); setForm({ name:s.name, phone:s.phone??'' }); setShowForm(true) }
+
+  async function save() {
+    setSaving(true)
+    if (editing) {
+      await supabase.from('students').update({ name:form.name, phone:form.phone||null }).eq('id', editing.id)
+    } else {
+      await supabase.from('students').insert({ name:form.name, phone:form.phone||null })
+    }
+    await load(); setSaving(false); setShowForm(false)
+  }
+
+  async function toggleActive(s: Student) {
+    await supabase.from('students').update({ is_active:!s.is_active }).eq('id', s.id)
+    await load()
+  }
+
+  if (loading) return <Spinner />
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+        <button onClick={openNew} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 학생 추가</button>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {students.map(s => (
+          <div key={s.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', opacity: s.is_active ? 1 : 0.5 }}>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700 }}>{s.name}</div>
+              {s.phone && <div style={{ fontSize:11, color:'#666', marginTop:1 }}>{s.phone}</div>}
+            </div>
+            <div style={{ display:'flex', gap:7 }}>
+              <button onClick={() => openEdit(s)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>수정</button>
+              <button onClick={() => toggleActive(s)} style={{ background:'#1e1e22', border:'1px solid #333', color: s.is_active ? '#e07060' : '#60b080', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>
+                {s.is_active ? '비활성' : '활성'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {showForm && (
+        <BottomSheet title={editing ? '학생 수정' : '학생 추가'} onClose={() => setShowForm(false)}>
+          <FormField label="이름 *"><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="학생명" /></FormField>
+          <FormField label="연락처"><input value={form.phone} onChange={e => setForm(f=>({...f,phone:e.target.value}))} style={inputStyle} placeholder="010-0000-0000 (선택)" /></FormField>
+          <SaveButton onClick={save} loading={saving} />
+        </BottomSheet>
+      )}
+    </div>
+  )
+}
+
+// ── 배정 관리 ──────────────────────────────────────────────────
+
+function AssignmentsManage() {
+  const [assignments, setAssignments] = useState<any[]>([])
+  const [instructors, setInstructors] = useState<any[]>([])
+  const [students, setStudents]       = useState<any[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [showForm, setShowForm]       = useState(false)
+  const [form, setForm] = useState({ instructor_id:'', student_id:'', lesson_type:'전공' as LessonType, day_of_week:'', start_time:'' })
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const [asRes, inRes, stRes] = await Promise.all([
+      supabase.from('assignments').select('*, instructor:instructors(name,grade), student:students(name)').eq('is_active', true).order('created_at', { ascending:false }),
+      supabase.from('instructors').select('id,name,grade').eq('is_active', true).order('name'),
+      supabase.from('students').select('id,name').eq('is_active', true).order('name'),
+    ])
+    setAssignments(asRes.data ?? [])
+    setInstructors(inRes.data ?? [])
+    setStudents(stRes.data ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function save() {
+    setSaving(true)
+    await supabase.from('assignments').insert({
+      instructor_id: form.instructor_id, student_id: form.student_id, lesson_type: form.lesson_type,
+      day_of_week: form.day_of_week !== '' ? parseInt(form.day_of_week) : null,
+      start_time: form.start_time || null,
     })
-    setAdding(false)
-    if (error) { alert('오류: ' + error.message); return }
-    setForm({ lesson_type: '전공실기', student_id: '', instructor_id: '', subject_name: '', day_of_week: '1', start_time: '', duration_minutes: '60', start_date: '' })
-    setOpen(false); load()
+    setForm({ instructor_id:'', student_id:'', lesson_type:'전공', day_of_week:'', start_time:'' })
+    await load(); setSaving(false); setShowForm(false)
   }
 
   async function deactivate(id: string) {
-    if (!confirm('이 정규 수업을 종료할까요?')) return
-    await supabase.from('lesson_schedules').update({ is_active: false }).eq('id', id)
-    load()
+    await supabase.from('assignments').update({ is_active:false }).eq('id', id)
+    await load()
   }
 
+  if (loading) return <Spinner />
+
   return (
-    <div className="space-y-3">
-      <button onClick={() => setOpen(o => !o)}
-        className="w-full py-3 rounded-2xl text-sm font-bold"
-        style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc', border: '1px dashed rgba(99,102,241,0.3)' }}>
-        + 정규 수업 추가
-      </button>
-
-      {open && (
-        <div className="px-5 py-4 rounded-2xl space-y-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <CustomSelect value={form.lesson_type}
-            onChange={v => setForm(f => ({ ...f, lesson_type: v, student_id: '', subject_name: '' }))}
-            placeholder="수업 종류 *"
-            options={LESSON_TYPES.map(t => ({ value: t, label: t }))} />
-          {!isGroup && (
-            <CustomSelect value={form.student_id}
-              onChange={v => setForm(f => ({ ...f, student_id: v }))}
-              placeholder="학생 선택 *"
-              options={students.map(s => ({ value: s.id, label: s.name }))} />
-          )}
-          <CustomSelect value={form.instructor_id}
-            onChange={v => setForm(f => ({ ...f, instructor_id: v, subject_name: '' }))}
-            placeholder="강사 선택 *"
-            options={instructors.map(i => ({ value: i.id, label: i.name }))} />
-          <SubjectSelect value={form.subject_name}
-            onChange={v => setForm(f => ({ ...f, subject_name: v }))}
-            instructorId={form.instructor_id} />
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <CustomSelect value={form.day_of_week}
-                onChange={v => setForm(f => ({ ...f, day_of_week: v }))}
-                placeholder="요일"
-                options={DAY_NAMES.map((d, i) => ({ value: String(i), label: `${d}요일` }))} />
+    <div>
+      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+        <button onClick={() => setShowForm(true)} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 배정 추가</button>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {assignments.map((a: any) => (
+          <div key={a.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                <Badge grade={a.instructor?.grade as Grade} />
+                <span style={{ fontSize:13, fontWeight:700 }}>{a.instructor?.name}</span>
+                <span style={{ fontSize:12, color:'#888' }}>→ {a.student?.name}</span>
+              </div>
+              <div style={{ fontSize:11, color:'#888' }}>
+                {a.lesson_type}
+                {a.day_of_week != null && <span style={{ marginLeft:6 }}>{DAYS[a.day_of_week]}</span>}
+                {a.start_time && <span style={{ marginLeft:4 }}>{a.start_time.slice(0,5)}</span>}
+              </div>
             </div>
-            <input type="time" value={form.start_time}
-              onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))}
-              className="flex-1 rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
+            <button onClick={() => deactivate(a.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#e07060', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>제거</button>
           </div>
-          <div className="flex gap-2">
-            <select value={form.duration_minutes}
-              onChange={e => setForm(f => ({ ...f, duration_minutes: e.target.value }))}
-              className="flex-1 rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-              style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }}>
-              {[30, 45, 60, 90, 120].map(m => <option key={m} value={m}>{m}분</option>)}
+        ))}
+        {assignments.length === 0 && <div style={{ color:'#555', fontSize:13, textAlign:'center', padding:'30px 0' }}>배정 없음</div>}
+      </div>
+      {showForm && (
+        <BottomSheet title="배정 추가" onClose={() => setShowForm(false)}>
+          <FormField label="강사 *">
+            <select value={form.instructor_id} onChange={e => setForm(f=>({...f,instructor_id:e.target.value}))} style={selectStyle}>
+              <option value="">선택</option>
+              {instructors.map(i => <option key={i.id} value={i.id}>[{i.grade}] {i.name}</option>)}
             </select>
-            <div className="flex-1">
-              <label className="text-[11px] block mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>수업 시작일</label>
-              <input type="date" value={form.start_date}
-                onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
-                className="w-full rounded-xl px-4 py-3 text-sm text-white focus:outline-none"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.09)', colorScheme: 'dark' }} />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setOpen(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-              style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.4)' }}>취소</button>
-            <button onClick={add} disabled={adding} className="flex-1 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: '#fff' }}>
-              {adding ? '추가 중...' : '추가'}
-            </button>
-          </div>
-        </div>
+          </FormField>
+          <FormField label="학생 *">
+            <select value={form.student_id} onChange={e => setForm(f=>({...f,student_id:e.target.value}))} style={selectStyle}>
+              <option value="">선택</option>
+              {students.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </FormField>
+          <FormField label="수업 종류">
+            <select value={form.lesson_type} onChange={e => setForm(f=>({...f,lesson_type:e.target.value as LessonType}))} style={selectStyle}>
+              {(['전공','부전공','전문반','취미'] as LessonType[]).map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FormField>
+          <FormField label="요일">
+            <select value={form.day_of_week} onChange={e => setForm(f=>({...f,day_of_week:e.target.value}))} style={selectStyle}>
+              <option value="">미정</option>
+              {DAYS.map((d, i) => <option key={i} value={String(i)}>{d}요일</option>)}
+            </select>
+          </FormField>
+          <FormField label="시작 시간">
+            <input type="time" value={form.start_time} onChange={e => setForm(f=>({...f,start_time:e.target.value}))} style={inputStyle} />
+          </FormField>
+          <SaveButton onClick={save} loading={saving} />
+        </BottomSheet>
       )}
+    </div>
+  )
+}
 
-      {list.length === 0 ? (
-        <p className="text-xs py-4 text-center" style={{ color: 'rgba(255,255,255,0.2)' }}>등록된 정규 수업이 없어요</p>
-      ) : list.map(sc => (
-        <div key={sc.id} className="px-5 py-4 rounded-2xl flex items-center justify-between"
-          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-white font-semibold">{sc.student?.name ?? '단체수업'}</span>
-              {sc.subject_name && <span className="text-xs" style={{ color: 'rgba(255,255,255,0.5)' }}>{sc.subject_name}</span>}
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(99,102,241,0.12)', color: '#a5b4fc' }}>{sc.lesson_type}</span>
+// ── 단체수업 관리 ─────────────────────────────────────────────
+
+function GroupsManage() {
+  const [groups, setGroups]           = useState<any[]>([])
+  const [instructors, setInstructors] = useState<any[]>([])
+  const [allStudents, setAllStudents] = useState<any[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [showForm, setShowForm]       = useState(false)
+  const [form, setForm] = useState({ name:'', instructor_id:'', day_of_week:'', start_time:'' })
+  const [saving, setSaving]           = useState(false)
+  const [studentModal, setStudentModal] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const [gcRes, inRes, stRes] = await Promise.all([
+      supabase.from('group_classes').select('*, instructor:instructors(name,grade), group_students(student:students(*))').eq('is_active', true).order('name'),
+      supabase.from('instructors').select('id,name,grade').eq('is_active', true).order('name'),
+      supabase.from('students').select('*').eq('is_active', true).order('name'),
+    ])
+    setGroups(gcRes.data ?? [])
+    setInstructors(inRes.data ?? [])
+    setAllStudents(stRes.data ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function saveGroup() {
+    setSaving(true)
+    await supabase.from('group_classes').insert({
+      name:form.name, instructor_id:form.instructor_id,
+      day_of_week: form.day_of_week !== '' ? parseInt(form.day_of_week) : null,
+      start_time: form.start_time || null,
+    })
+    setForm({ name:'', instructor_id:'', day_of_week:'', start_time:'' })
+    await load(); setSaving(false); setShowForm(false)
+  }
+
+  async function addStudent(groupId: string, studentId: string) {
+    await supabase.from('group_students').insert({ group_id:groupId, student_id:studentId })
+    await load()
+  }
+
+  async function removeStudent(groupId: string, studentId: string) {
+    await supabase.from('group_students').delete().eq('group_id', groupId).eq('student_id', studentId)
+    await load()
+  }
+
+  async function deactivateGroup(id: string) {
+    await supabase.from('group_classes').update({ is_active:false }).eq('id', id)
+    await load()
+  }
+
+  if (loading) return <Spinner />
+
+  const currentGroup = studentModal ? groups.find((g: any) => g.id === studentModal) : null
+  const currentMembers = new Set<string>(currentGroup?.group_students?.map((gs: any) => gs.student.id) ?? [])
+
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+        <button onClick={() => setShowForm(true)} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 단체수업 추가</button>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        {groups.map((g: any) => (
+          <div key={g.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+              <div>
+                <div style={{ fontSize:14, fontWeight:700 }}>{g.name}</div>
+                <div style={{ fontSize:11, color:'#888', marginTop:1 }}>
+                  [{g.instructor?.grade}] {g.instructor?.name}
+                  {g.day_of_week != null && <span style={{ marginLeft:6 }}>{DAYS[g.day_of_week]}</span>}
+                  {g.start_time && <span style={{ marginLeft:4 }}>{g.start_time.slice(0,5)}</span>}
+                </div>
+              </div>
+              <div style={{ display:'flex', gap:6 }}>
+                <button onClick={() => setStudentModal(g.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer' }}>학생</button>
+                <button onClick={() => deactivateGroup(g.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#e07060', borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer' }}>제거</button>
+              </div>
             </div>
-            <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              {sc.instructor?.name} · {DAY_NAMES[sc.day_of_week]}요일 {sc.start_time?.slice(0, 5)} · {sc.duration_minutes}분
-            </p>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+              {g.group_students?.map((gs: any) => (
+                <span key={gs.student.id} style={{ background:'#1e1e20', border:'1px solid #333', borderRadius:6, padding:'2px 8px', fontSize:11, color:'#bbb' }}>{gs.student.name}</span>
+              ))}
+              {(!g.group_students || g.group_students.length === 0) && <span style={{ fontSize:11, color:'#555' }}>학생 없음</span>}
+            </div>
           </div>
-          <button onClick={() => deactivate(sc.id)} className="text-[10px] px-2 py-1 rounded-lg ml-2 shrink-0"
-            style={{ background: 'rgba(239,68,68,0.08)', color: 'rgba(248,113,113,0.5)' }}>종료</button>
+        ))}
+        {groups.length === 0 && <div style={{ color:'#555', fontSize:13, textAlign:'center', padding:'30px 0' }}>단체수업 없음</div>}
+      </div>
+      {showForm && (
+        <BottomSheet title="단체수업 추가" onClose={() => setShowForm(false)}>
+          <FormField label="수업명 *"><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="예: 초등 앙상블" /></FormField>
+          <FormField label="강사 *">
+            <select value={form.instructor_id} onChange={e => setForm(f=>({...f,instructor_id:e.target.value}))} style={selectStyle}>
+              <option value="">선택</option>
+              {instructors.map(i => <option key={i.id} value={i.id}>[{i.grade}] {i.name}</option>)}
+            </select>
+          </FormField>
+          <FormField label="요일">
+            <select value={form.day_of_week} onChange={e => setForm(f=>({...f,day_of_week:e.target.value}))} style={selectStyle}>
+              <option value="">미정</option>
+              {DAYS.map((d, i) => <option key={i} value={String(i)}>{d}요일</option>)}
+            </select>
+          </FormField>
+          <FormField label="시작 시간">
+            <input type="time" value={form.start_time} onChange={e => setForm(f=>({...f,start_time:e.target.value}))} style={inputStyle} />
+          </FormField>
+          <SaveButton onClick={saveGroup} loading={saving} />
+        </BottomSheet>
+      )}
+      {studentModal && currentGroup && (
+        <BottomSheet title={`${currentGroup.name} 학생 관리`} onClose={() => setStudentModal(null)}>
+          <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+            {allStudents.map(s => {
+              const isMember = currentMembers.has(s.id)
+              return (
+                <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 0', borderBottom:'1px solid #1e1e20' }}>
+                  <span style={{ fontSize:13, color: isMember ? '#e8e4d8' : '#777' }}>{s.name}</span>
+                  <button onClick={() => isMember ? removeStudent(currentGroup.id, s.id) : addStudent(currentGroup.id, s.id)} style={{
+                    background: isMember ? 'rgba(224,112,96,0.15)' : 'rgba(96,176,128,0.15)',
+                    border: `1px solid ${isMember ? 'rgba(224,112,96,0.4)' : 'rgba(96,176,128,0.4)'}`,
+                    color: isMember ? '#e07060' : '#60b080',
+                    borderRadius:7, padding:'5px 12px', fontSize:12, fontWeight:600, cursor:'pointer',
+                  }}>
+                    {isMember ? '제외' : '추가'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        </BottomSheet>
+      )}
+    </div>
+  )
+}
+
+// ── 단가 관리 ──────────────────────────────────────────────────
+
+function RatesManage() {
+  const [rates, setRates]     = useState<GradeRate[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState<{ id:string; rate:number } | null>(null)
+  const [saving, setSaving]   = useState(false)
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('grade_rates').select('*').order('grade').order('lesson_type')
+    setRates(data ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function saveRate() {
+    if (!editing) return
+    setSaving(true)
+    await supabase.from('grade_rates').update({ rate:editing.rate }).eq('id', editing.id)
+    await load(); setSaving(false); setEditing(null)
+  }
+
+  if (loading) return <Spinner />
+
+  return (
+    <div>
+      <div style={{ fontSize:12, color:'#888', marginBottom:12 }}>셀을 눌러 단가를 수정할 수 있어요 (단위: 원)</div>
+      <div style={{ background:'#141416', borderRadius:10, border:'1px solid #222', overflow:'hidden' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'40px repeat(5, 1fr)', background:'#1a1a1c', borderBottom:'1px solid #222' }}>
+          <div style={{ padding:'8px 4px' }} />
+          {LESSON_TYPES.map(t => (
+            <div key={t} style={{ padding:'8px 2px', textAlign:'center', fontSize:10, fontWeight:700, color:'#aaa' }}>{t}</div>
+          ))}
         </div>
-      ))}
+        {GRADES.map(grade => (
+          <div key={grade} style={{ display:'grid', gridTemplateColumns:'40px repeat(5, 1fr)', borderBottom:'1px solid #1a1a1c' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'10px 0' }}>
+              <Badge grade={grade} />
+            </div>
+            {LESSON_TYPES.map(lt => {
+              const r = rates.find(r => r.grade === grade && r.lesson_type === lt)
+              if (!r) return <div key={lt} />
+              const isEd = editing?.id === r.id
+              return (
+                <div key={lt} onClick={() => !isEd && setEditing({ id:r.id, rate:r.rate })}
+                  style={{ padding:'8px 4px', textAlign:'center', cursor:'pointer', background: isEd ? '#1e2230' : 'transparent', borderRadius:4 }}>
+                  {isEd ? (
+                    <input
+                      type="number" value={editing.rate}
+                      onChange={e => setEditing(ed => ed && ({ ...ed, rate: parseInt(e.target.value)||0 }))}
+                      onBlur={saveRate}
+                      onKeyDown={e => { if (e.key==='Enter') saveRate(); if (e.key==='Escape') setEditing(null) }}
+                      autoFocus
+                      style={{ width:'100%', background:'transparent', border:'none', color:'#c0a060', textAlign:'center', fontSize:11, fontWeight:700, outline:'none' }}
+                    />
+                  ) : (
+                    <div style={{ fontSize:11, color:'#ddd' }}>{(r.rate/10000).toFixed(r.rate%10000 ? 1 : 0)}만</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+      {saving && <div style={{ textAlign:'center', fontSize:11, color:'#888', marginTop:8 }}>저장 중...</div>}
     </div>
   )
 }

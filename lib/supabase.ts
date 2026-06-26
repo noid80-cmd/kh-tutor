@@ -7,16 +7,17 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: { flowType: 'implicit' },
 })
 
-export type Role = 'admin' | 'instructor'
-export type LessonStatus = 'scheduled' | 'completed' | 'cancelled' | 'makeup'
-export type ChangeStatus = 'pending' | 'approved' | 'rejected'
+export type Grade = 'S' | 'A' | 'B' | 'C'
+export type LessonType = '전공' | '부전공' | '전문반' | '취미' | '단체'
+export type EvalStatus = 'submitted' | 'approved'
 
 export interface Instructor {
   id: string
   user_id: string | null
   name: string
   phone: string
-  rate_per_lesson: number
+  email: string | null
+  grade: Grade
   is_active: boolean
   created_at: string
 }
@@ -24,65 +25,57 @@ export interface Instructor {
 export interface Student {
   id: string
   name: string
-  phone: string
+  phone: string | null
+  is_active: boolean
+  created_at: string
+}
+
+export interface GradeRate {
+  id: string
+  grade: Grade
+  lesson_type: LessonType
+  rate: number
+}
+
+export interface Assignment {
+  id: string
   instructor_id: string
+  student_id: string
+  lesson_type: LessonType
+  day_of_week: number | null
+  start_time: string | null
   is_active: boolean
   created_at: string
   instructor?: Instructor
-}
-
-export interface LessonSchedule {
-  id: string
-  student_id: string
-  instructor_id: string
-  day_of_week: number  // 0=일 1=월 2=화 3=수 4=목 5=금 6=토
-  start_time: string   // HH:MM
-  duration_minutes: number
-  start_date: string
-  end_date: string | null
-  is_active: boolean
   student?: Student
-  instructor?: Instructor
 }
 
-export interface Lesson {
+export interface GroupClass {
   id: string
-  schedule_id: string | null
   instructor_id: string
-  student_id: string
-  date: string
-  start_time: string
-  duration_minutes: number
-  status: LessonStatus
-  is_makeup: boolean
-  original_lesson_id: string | null
+  name: string
+  day_of_week: number | null
+  start_time: string | null
+  is_active: boolean
   created_at: string
   instructor?: Instructor
-  student?: Student
-  class_report?: ClassReport
+  group_students?: { student: Student }[]
 }
 
-export interface ClassReport {
+export interface Evaluation {
   id: string
-  lesson_id: string
   instructor_id: string
-  student_id: string
   date: string
+  lesson_type: LessonType
+  student_id: string | null
+  attended: boolean | null
+  group_id: string | null
   content: string
-  next_goal: string
-  student_memo: string
-  admin_approved_at: string | null
+  next_goal: string | null
+  status: EvalStatus
+  approved_at: string | null
   created_at: string
-}
-
-export interface ChangeRequest {
-  id: string
-  lesson_id: string
-  requested_by: string
-  reason: string
-  new_date: string | null
-  new_time: string | null
-  status: ChangeStatus
-  created_at: string
-  lesson?: Lesson
+  instructor?: Instructor
+  student?: Student
+  group?: GroupClass
 }

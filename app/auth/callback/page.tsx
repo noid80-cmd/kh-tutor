@@ -1,37 +1,61 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 export default function AuthCallback() {
   const router = useRouter()
+  const [status, setStatus] = useState('로그인 중...')
 
   useEffect(() => {
-    const hash = window.location.hash
-    const params = new URLSearchParams(hash.substring(1))
-    const accessToken = params.get('access_token')
-    const refreshToken = params.get('refresh_token')
+    async function handleCallback() {
+      const url = new URL(window.location.href)
+      const code = url.searchParams.get('code')
+      const hash = window.location.hash
+      const hashParams = new URLSearchParams(hash.substring(1))
+      const accessToken = hashParams.get('access_token')
+      const refreshToken = hashParams.get('refresh_token')
 
-    if (accessToken && refreshToken) {
-      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken })
-        .then(({ data: { session }, error }) => {
-          if (error || !session) {
-            router.replace('/login')
-          } else {
-            router.replace('/dashboard')
-          }
-        })
-    } else {
-      // 해시 없으면 이미 세션 있는지 확인
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session) {
-          router.replace('/dashboard')
-        } else {
-          router.replace('/login')
+      // PKCE flow: ?code=xxx
+      if (code) {
+        const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+        if (error || !data.session) {
+          setStatus('로그인 실패: ' + (error?.message ?? '세션 없음'))
+          setTimeout(() => router.replace('/login'), 2000)
+          return
         }
-      })
+        router.replace('/dashboard')
+        return
+      }
+
+      // Implicit flow: #access_token=xxx
+      if (accessToken && refreshToken) {
+        const { data, error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        })
+        if (error || !data.session) {
+          setStatus('로그인 실패: ' + (error?.message ?? '세션 없음'))
+          setTimeout(() => router.replace('/login'), 2000)
+          return
+        }
+        router.replace('/dashboard')
+        return
+      }
+
+      // 이미 세션 있으면 바로 이동
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        router.replace('/dashboard')
+        return
+      }
+
+      setStatus('로그인 정보가 없어요')
+      setTimeout(() => router.replace('/login'), 2000)
     }
+
+    handleCallback()
   }, [router])
 
   return (
@@ -46,7 +70,7 @@ export default function AuthCallback() {
         borderTopColor: '#6366f1',
         animation: 'spin 0.8s linear infinite',
       }} />
-      <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>로그인 중...</p>
+      <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 14 }}>{status}</p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )

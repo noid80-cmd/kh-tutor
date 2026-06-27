@@ -102,7 +102,7 @@ RETURNS uuid LANGUAGE sql SECURITY DEFINER AS $$
   SELECT id FROM instructors WHERE user_id = auth.uid() LIMIT 1
 $$;
 
-CREATE POLICY "강사 조회"         ON instructors FOR SELECT USING (user_id = auth.uid() OR is_admin());
+CREATE POLICY "강사 조회"         ON instructors FOR SELECT USING (user_id = auth.uid() OR (email = auth.email() AND user_id IS NULL) OR is_admin());
 CREATE POLICY "어드민 강사 관리"   ON instructors FOR ALL    USING (is_admin());
 
 CREATE POLICY "학생 조회" ON students FOR SELECT USING (

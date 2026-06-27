@@ -955,6 +955,12 @@ function InstructorsManage() {
     await load()
   }
 
+  async function deleteInstructor(i: Instructor) {
+    if (!confirm(`${i.name} 강사를 삭제할까요?`)) return
+    await supabase.from('instructors').delete().eq('id', i.id)
+    await load()
+  }
+
   if (loading) return <Spinner />
 
   return (
@@ -977,6 +983,7 @@ function InstructorsManage() {
               <button onClick={() => toggleActive(i)} style={{ background:'#1e1e22', border:'1px solid #333', color: i.is_active ? '#e07060' : '#60b080', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>
                 {i.is_active ? '비활성' : '활성'}
               </button>
+              <button onClick={() => deleteInstructor(i)} style={{ background:'#1e1e22', border:'1px solid #e07060', color:'#e07060', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>삭제</button>
             </div>
           </div>
         ))}

@@ -941,11 +941,14 @@ function InstructorsManage() {
   function openEdit(i: Instructor) { setEditing(i); setForm({ name:i.name, phone:i.phone, email:i.email??'', grade:i.grade }); setShowForm(true) }
 
   async function save() {
+    if (!form.name.trim()) return
+    if (!form.phone.trim()) return
+    if (!form.email.trim()) { alert('이메일을 입력해주세요 (Google 로그인에 사용됩니다)'); return }
     setSaving(true)
     if (editing) {
-      await supabase.from('instructors').update({ name:form.name, phone:form.phone, email:form.email||null, grade:form.grade }).eq('id', editing.id)
+      await supabase.from('instructors').update({ name:form.name, phone:form.phone, email:form.email, grade:form.grade }).eq('id', editing.id)
     } else {
-      await supabase.from('instructors').insert({ name:form.name, phone:form.phone, email:form.email||null, grade:form.grade })
+      await supabase.from('instructors').insert({ name:form.name, phone:form.phone, email:form.email, grade:form.grade })
     }
     await load(); setSaving(false); setShowForm(false)
   }
@@ -992,7 +995,7 @@ function InstructorsManage() {
         <BottomSheet title={editing ? '강사 수정' : '강사 추가'} onClose={() => setShowForm(false)}>
           <FormField label="이름 *"><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="강사명" /></FormField>
           <FormField label="연락처 *"><input value={form.phone} onChange={e => setForm(f=>({...f,phone:e.target.value}))} style={inputStyle} placeholder="010-0000-0000" /></FormField>
-          <FormField label="이메일"><input value={form.email} onChange={e => setForm(f=>({...f,email:e.target.value}))} style={inputStyle} placeholder="이메일 (선택)" /></FormField>
+          <FormField label="이메일 *"><input value={form.email} onChange={e => setForm(f=>({...f,email:e.target.value}))} style={inputStyle} placeholder="Google 로그인 이메일" /></FormField>
           <FormField label="등급">
             <div style={{ display:'flex', gap:6 }}>
               {GRADES.map(g => (

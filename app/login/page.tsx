@@ -14,7 +14,7 @@ export default function LoginPage() {
     setError(''); setLoading(true)
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
     })
     if (error) { setError('이메일 전송에 실패했어요. 다시 시도해주세요.'); setLoading(false); return }
     setSent(true)
@@ -24,7 +24,7 @@ export default function LoginPage() {
   async function handleGoogle() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/dashboard` },
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
     })
   }
 

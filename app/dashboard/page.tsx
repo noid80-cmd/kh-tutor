@@ -996,7 +996,7 @@ function InstructorsManage() {
           <FormField label="이름 *"><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="강사명" /></FormField>
           <FormField label="연락처 *"><input value={form.phone} onChange={e => setForm(f=>({...f,phone:e.target.value}))} style={inputStyle} placeholder="010-0000-0000" /></FormField>
           <FormField label="이메일 *"><input value={form.email} onChange={e => setForm(f=>({...f,email:e.target.value}))} style={inputStyle} placeholder="예: hong@gmail.com" /></FormField>
-          <FormField label="등급">
+          <FormField label="코드">
             <div style={{ display:'flex', gap:6 }}>
               {GRADES.map(g => (
                 <button key={g} onClick={() => setForm(f=>({...f,grade:g}))} style={{

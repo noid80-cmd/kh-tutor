@@ -16,7 +16,7 @@ export default function LoginPage() {
       email,
       options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
     })
-    if (error) { setError('이메일 전송에 실패했어요. 다시 시도해주세요.'); setLoading(false); return }
+    if (error) { setError(error.message); setLoading(false); return }
     setSent(true)
     setLoading(false)
   }

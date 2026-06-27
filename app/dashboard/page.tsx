@@ -422,7 +422,7 @@ function TodayView({ instructor }: { instructor: Instructor }) {
 // ── 수업 추가 모달 ─────────────────────────────────────────────
 
 function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string; onClose: () => void; onDone: () => void }) {
-  const [myStudents, setMyStudents] = useState<{ id:string; name:string; lesson_type:LessonType }[]>([])
+  const [assignments, setAssignments] = useState<{ studentId:string; studentName:string; lessonType:LessonType }[]>([])
   const [groups, setGroups] = useState<GroupClass[]>([])
   const [kind, setKind] = useState<'individual' | 'group'>('individual')
   const [studentId, setStudentId] = useState('')
@@ -435,23 +435,32 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
+  // 학생 목록 (중복 제거)
+  const uniqueStudents = assignments.reduce<{ id:string; name:string }[]>((acc, a) => {
+    if (!acc.find(s => s.id === a.studentId)) acc.push({ id:a.studentId, name:a.studentName })
+    return acc
+  }, [])
+
+  // 선택된 학생의 수업 종류 목록
+  const availableLessonTypes = assignments.filter(a => a.studentId === studentId).map(a => a.lessonType)
+
   useEffect(() => {
     Promise.all([
       supabase.from('assignments').select('student:students(id,name), lesson_type').eq('instructor_id', instructorId).eq('is_active', true),
       supabase.from('group_classes').select('*').eq('instructor_id', instructorId).eq('is_active', true),
     ]).then(([asRes, gcRes]) => {
-      setMyStudents((asRes.data ?? []).map((d: any) => ({ id:d.student.id, name:d.student.name, lesson_type:d.lesson_type })))
+      setAssignments((asRes.data ?? []).map((d: any) => ({ studentId:d.student.id, studentName:d.student.name, lessonType:d.lesson_type })))
       setGroups(gcRes.data ?? [])
     })
   }, [instructorId])
 
   useEffect(() => {
     if (kind === 'individual' && studentId) {
-      const s = myStudents.find(s => s.id === studentId)
-      if (s) setLessonType(s.lesson_type)
+      const types = assignments.filter(a => a.studentId === studentId).map(a => a.lessonType)
+      if (types.length === 1) setLessonType(types[0])
     }
     if (kind === 'group') setLessonType('단체')
-  }, [kind, studentId, myStudents])
+  }, [kind, studentId, assignments])
 
   async function submit() {
     if (kind === 'individual' && !studentId) { setError('학생을 선택해주세요'); return }
@@ -493,16 +502,22 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
           {kind === 'individual' && (
             <>
               <FormField label="학생 *">
-                <select value={studentId} onChange={e => setStudentId(e.target.value)} style={selectStyle}>
+                <select value={studentId} onChange={e => { setStudentId(e.target.value); setLessonType('전공') }} style={selectStyle}>
                   <option value="">선택하세요</option>
-                  {myStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  {uniqueStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </FormField>
-              <FormField label="수업 종류">
-                <select value={lessonType} onChange={e => setLessonType(e.target.value as LessonType)} style={selectStyle}>
-                  {(['전공','부전공','전문반','취미'] as LessonType[]).map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </FormField>
+              {studentId && (
+                <FormField label="수업 종류">
+                  {availableLessonTypes.length === 1 ? (
+                    <div style={{ ...inputStyle, color:'#c0a060', fontWeight:700 }}>{availableLessonTypes[0]}</div>
+                  ) : (
+                    <select value={lessonType} onChange={e => setLessonType(e.target.value as LessonType)} style={selectStyle}>
+                      {availableLessonTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  )}
+                </FormField>
+              )}
               <FormField label="출석">
                 <div style={{ display:'flex', gap:8 }}>
                   {[true, false].map(v => (

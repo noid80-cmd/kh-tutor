@@ -5,16 +5,15 @@ import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setError(''); setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { error } = await supabase.auth.signInWithPassword({ email, password: 'kh1234' })
     if (error) {
-      setError('이메일 또는 비밀번호가 맞지 않아요')
+      setError('등록되지 않은 이메일이에요')
       setLoading(false)
       return
     }
@@ -77,12 +76,10 @@ export default function LoginPage() {
             <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
           </div>
 
-          {/* 이메일 + 비밀번호 */}
+          {/* 이메일 */}
           <form onSubmit={handleLogin} className="flex flex-col" style={{ gap: 12 }}>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)}
               placeholder="이메일" required style={inputStyle} />
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder="비밀번호" required style={inputStyle} />
             {error && <p style={{ color: '#f87171', fontSize: 13, textAlign: 'center' }}>{error}</p>}
             <button type="submit" disabled={loading}
               className="w-full rounded-2xl text-white font-bold disabled:opacity-50 transition active:scale-95"

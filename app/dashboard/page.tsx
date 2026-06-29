@@ -123,8 +123,9 @@ function SaveButton({ onClick, loading }: { onClick: () => void; loading: boolea
 
 export default function Dashboard() {
   const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [loading, setLoading]     = useState(true)
+  const [isAdmin, setIsAdmin]     = useState(false)
+  const [userEmail, setUserEmail] = useState('')
   const [instructor, setInstructor] = useState<Instructor | null>(null)
   const [tab, setTab] = useState<string>('today')
 
@@ -133,6 +134,7 @@ export default function Dashboard() {
       if (!user) { router.push('/login'); return }
       const admin = user.email === ADMIN_EMAIL
       setIsAdmin(admin)
+      setUserEmail(user.email ?? '')
       if (!admin) {
         let { data } = await supabase.from('instructors').select('*').eq('user_id', user.id).maybeSingle()
         if (!data && user.email) {
@@ -206,7 +208,7 @@ export default function Dashboard() {
         {isAdmin && (
           <>
             {tab === 'approve' && <ApproveView />}
-            {tab === 'payroll' && <PayrollView />}
+            {tab === 'payroll' && <PayrollView userEmail={userEmail} />}
             {tab === 'manage'  && <ManageView />}
           </>
         )}
@@ -818,13 +820,39 @@ function printPayslip(p: InstructorPayroll, range: { start: string; end: string;
   w.document.close()
 }
 
-function PayrollSection({ title, payrolls, range, expanded, setExpanded }: {
+function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEmail }: {
   title: string
   payrolls: InstructorPayroll[]
   range: { start: string; end: string; payLabel: string }
   expanded: string | null
   setExpanded: (id: string | null) => void
+  userEmail: string
 }) {
+  const [emailingIds, setEmailingIds] = useState<Set<string>>(new Set())
+  const [emailedIds, setEmailedIds]   = useState<Set<string>>(new Set())
+
+  async function sendEmail(p: InstructorPayroll) {
+    if (!p.instructor.email) { alert('강사 이메일이 등록되지 않았어요'); return }
+    setEmailingIds(prev => new Set(prev).add(p.instructor.id))
+    const res = await fetch('/api/send-payslip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        instructor: p.instructor,
+        lines: p.lines,
+        total_before: p.total_before,
+        tax: p.tax,
+        total_after: p.total_after,
+        range,
+        callerEmail: userEmail,
+      }),
+    })
+    const json = await res.json()
+    setEmailingIds(prev => { const s = new Set(prev); s.delete(p.instructor.id); return s })
+    if (json.ok) setEmailedIds(prev => new Set(prev).add(p.instructor.id))
+    else alert('전송 실패: ' + json.error)
+  }
+
   if (payrolls.length === 0) return null
   return (
     <div style={{ marginBottom: 24 }}>
@@ -858,10 +886,23 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded }: {
                   <div style={{ fontSize:14, fontWeight:800, color:'#c0a060' }}>{fmt만원(p.total_after)}</div>
                   <div style={{ fontSize:10, color:'#666' }}>세후</div>
                 </div>
-                <button onClick={e => { e.stopPropagation(); printPayslip(p, range) }} style={{
-                  background:'#1e1e22', border:'1px solid #333', color:'#aaa',
-                  borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer', whiteSpace:'nowrap',
-                }}>명세서</button>
+                <div style={{ display:'flex', gap:6 }}>
+                  <button onClick={e => { e.stopPropagation(); printPayslip(p, range) }} style={{
+                    background:'#1e1e22', border:'1px solid #333', color:'#aaa',
+                    borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer', whiteSpace:'nowrap',
+                  }}>명세서</button>
+                  <button onClick={e => { e.stopPropagation(); sendEmail(p) }}
+                    disabled={emailingIds.has(p.instructor.id) || emailedIds.has(p.instructor.id)}
+                    style={{
+                      background: emailedIds.has(p.instructor.id) ? 'rgba(96,176,128,0.15)' : '#1e1e22',
+                      border: `1px solid ${emailedIds.has(p.instructor.id) ? 'rgba(96,176,128,0.4)' : '#333'}`,
+                      color: emailedIds.has(p.instructor.id) ? '#60b080' : '#aaa',
+                      borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer', whiteSpace:'nowrap',
+                      opacity: emailingIds.has(p.instructor.id) ? 0.5 : 1,
+                    }}>
+                    {emailingIds.has(p.instructor.id) ? '전송중' : emailedIds.has(p.instructor.id) ? '전송됨' : '이메일'}
+                  </button>
+                </div>
               </div>
             </div>
             {expanded === p.instructor.id && (
@@ -893,7 +934,7 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded }: {
   )
 }
 
-function PayrollView() {
+function PayrollView({ userEmail }: { userEmail: string }) {
   const [monthOffset, setMonthOffset] = useState(0)
   const [payrolls15, setPayrolls15] = useState<InstructorPayroll[]>([])
   const [payrolls25, setPayrolls25] = useState<InstructorPayroll[]>([])
@@ -983,8 +1024,8 @@ function PayrollView() {
 
       {calculated && (
         <>
-          <PayrollSection title="15일 지급" payrolls={payrolls15} range={range15} expanded={expanded} setExpanded={setExpanded} />
-          <PayrollSection title="25일 지급" payrolls={payrolls25} range={range25} expanded={expanded} setExpanded={setExpanded} />
+          <PayrollSection title="15일 지급" payrolls={payrolls15} range={range15} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} />
+          <PayrollSection title="25일 지급" payrolls={payrolls25} range={range25} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} />
           {payrolls15.length === 0 && payrolls25.length === 0 && (
             <div style={{ textAlign:'center', color:'#555', padding:'30px 0', fontSize:13 }}>해당 기간에 승인된 수업이 없어요</div>
           )}

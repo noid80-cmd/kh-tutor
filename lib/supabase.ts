@@ -8,7 +8,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 })
 
 export type Grade = 'S' | 'A+' | 'A' | 'A-' | 'B'
-export type LessonType = '전공' | '오디션' | '부전공' | '전문반' | '취미' | '단체'
+export type LessonType = '전공' | '오디션' | '부전공' | '전문반' | '취미' | '단체' | '댄스'
 export type EvalStatus = 'submitted' | 'approved'
 
 export interface Instructor {

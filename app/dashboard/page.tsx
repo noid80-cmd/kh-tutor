@@ -9,7 +9,7 @@ import type { Instructor, Student, Assignment, GroupClass, Evaluation, GradeRate
 
 const ADMIN_EMAIL = 'noid80@hanmail.net'
 const GRADES: Grade[] = ['S', 'A+', 'A', 'A-', 'B']
-const LESSON_TYPES: LessonType[] = ['전공', '오디션', '부전공', '전문반', '취미', '단체']
+const LESSON_TYPES: LessonType[] = ['전공', '오디션', '부전공', '전문반', '취미', '단체', '댄스']
 const DAYS = ['일', '월', '화', '수', '목', '금', '토']
 const GRADE_COLOR: Record<Grade, string> = { S: '#c0a060', 'A+': '#8878e8', A: '#7090e0', 'A-': '#6098d8', B: '#60b080' }
 

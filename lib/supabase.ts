@@ -48,10 +48,19 @@ export interface Assignment {
   lesson_type: LessonType
   day_of_week: number | null
   start_time: string | null
+  enrolled_at: string | null
   is_active: boolean
   created_at: string
   instructor?: Instructor
   student?: Student
+}
+
+export interface LessonReschedule {
+  id: string
+  assignment_id: string
+  change_date: string
+  note: string | null
+  created_at: string
 }
 
 export interface GroupClass {
@@ -73,6 +82,9 @@ export interface Evaluation {
   lesson_type: LessonType
   student_id: string | null
   attended: boolean | null
+  absence_type: 'advance' | 'same_day' | null
+  makeup_date: string | null
+  makeup_done: boolean
   group_id: string | null
   group_name: string | null
   content: string

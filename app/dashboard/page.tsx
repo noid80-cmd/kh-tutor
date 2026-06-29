@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import type { Instructor, Student, Assignment, GroupClass, Evaluation, GradeRate, Grade, LessonType } from '@/lib/supabase'
+import type { Instructor, Student, Assignment, GroupClass, Evaluation, LessonReschedule, GradeRate, Grade, LessonType } from '@/lib/supabase'
 
 // ── 상수 ──────────────────────────────────────────────────────
 
@@ -244,15 +244,20 @@ interface EvalFormState {
   student_id?: string
   group_id?: string
   lesson_type: LessonType
+  absence_type: 'advance' | 'same_day' | null
+  makeup_date: string
 }
 
 function TodayView({ instructor }: { instructor: Instructor }) {
   const [items, setItems] = useState<TodayItem[]>([])
   const [evals, setEvals] = useState<Evaluation[]>([])
+  const [reschedules, setReschedules] = useState<LessonReschedule[]>([])
+  const [pendingMakeups, setPendingMakeups] = useState<(Evaluation & { student?: Student })[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [form, setForm] = useState<EvalFormState | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [reschedulingId, setReschedulingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
   const todayDow = new Date().getDay()
@@ -260,11 +265,19 @@ function TodayView({ instructor }: { instructor: Instructor }) {
   const loadData = useCallback(async () => {
     setLoading(true)
     const today = todayStr()
-    const [asRes, gcRes, evRes] = await Promise.all([
+    const [asRes, gcRes, evRes, allAsRes, mkRes] = await Promise.all([
       supabase.from('assignments').select('*, student:students(*)').eq('instructor_id', instructor.id).eq('is_active', true).eq('day_of_week', todayDow),
       supabase.from('group_classes').select('*').eq('instructor_id', instructor.id).eq('is_active', true).eq('day_of_week', todayDow),
       supabase.from('evaluations').select('*').eq('instructor_id', instructor.id).eq('date', today),
+      supabase.from('assignments').select('id, enrolled_at').eq('instructor_id', instructor.id).eq('is_active', true),
+      supabase.from('evaluations').select('*, student:students(name)').eq('instructor_id', instructor.id).eq('makeup_done', false).not('makeup_date', 'is', null),
     ])
+    const assignmentIds = (allAsRes.data ?? []).map((a: any) => a.id)
+    let rsData: LessonReschedule[] = []
+    if (assignmentIds.length > 0) {
+      const { data } = await supabase.from('lesson_reschedules').select('*').in('assignment_id', assignmentIds)
+      rsData = data ?? []
+    }
     const todayItems: TodayItem[] = [
       ...(asRes.data ?? []).map((a: any) => ({ kind: 'individual' as const, assignment: a })),
       ...(gcRes.data ?? []).map((g: any) => ({ kind: 'group' as const, group: g })),
@@ -276,6 +289,8 @@ function TodayView({ instructor }: { instructor: Instructor }) {
     })
     setItems(todayItems)
     setEvals(evRes.data ?? [])
+    setReschedules(rsData)
+    setPendingMakeups((mkRes.data ?? []) as any)
     setLoading(false)
   }, [instructor.id, todayDow])
 
@@ -286,6 +301,21 @@ function TodayView({ instructor }: { instructor: Instructor }) {
     return evals.find(e => e.group_id === item.group.id)
   }
 
+  function getRescheduleInfo(assignment: Assignment & { student: Student }) {
+    const { enrolled_at } = assignment
+    if (!enrolled_at) return null
+    const start = new Date(enrolled_at)
+    const end = new Date(start); end.setDate(end.getDate() + 27)
+    const today = new Date(); today.setHours(0,0,0,0)
+    if (today < start || today > end) return null
+    const used = reschedules.filter(r => {
+      if (r.assignment_id !== assignment.id) return false
+      const d = new Date(r.change_date)
+      return d >= start && d <= end
+    }).length
+    return { used, quota: 1, periodEnd: end.toISOString().split('T')[0] }
+  }
+
   function openForm(item: TodayItem) {
     const existing = getEvalForItem(item)
     if (existing) return
@@ -293,19 +323,43 @@ function TodayView({ instructor }: { instructor: Instructor }) {
     if (expandedId === id) { setExpandedId(null); setForm(null); return }
     setExpandedId(id)
     if (item.kind === 'individual') {
-      setForm({ attended:true, content:'', next_goal:'', date:todayStr(), student_id:item.assignment.student_id, lesson_type:item.assignment.lesson_type })
+      setForm({ attended:true, content:'', next_goal:'', date:todayStr(), student_id:item.assignment.student_id, lesson_type:item.assignment.lesson_type, absence_type:null, makeup_date:'' })
     } else {
-      setForm({ attended:true, content:'', next_goal:'', date:todayStr(), group_id:item.group.id, lesson_type:'단체' })
+      setForm({ attended:true, content:'', next_goal:'', date:todayStr(), group_id:item.group.id, lesson_type:'단체', absence_type:null, makeup_date:'' })
     }
+  }
+
+  async function logReschedule(assignment: Assignment & { student: Student }) {
+    const info = getRescheduleInfo(assignment)
+    if (info && info.used >= info.quota) {
+      if (!confirm(`${assignment.student.name} 학생은 이번 등록 기간 변경 횟수(${info.quota}회)를 모두 사용했어요. 그래도 변경을 기록할까요?`)) return
+    }
+    setReschedulingId(assignment.id)
+    await supabase.from('lesson_reschedules').insert({
+      assignment_id: assignment.id,
+      change_date: todayStr(),
+    })
+    await loadData()
+    setReschedulingId(null)
+  }
+
+  async function completeMakeup(evalId: string) {
+    await supabase.from('evaluations').update({ makeup_done: true }).eq('id', evalId)
+    await loadData()
   }
 
   async function submitEval() {
     if (!form) return
     if (!form.content.trim()) { setError('수업 내용을 입력해주세요'); return }
     setSubmitting(true); setError('')
+    const isAbsent = form.student_id && !form.attended
     const { error: err } = await supabase.from('evaluations').insert({
       instructor_id: instructor.id, date: form.date, lesson_type: form.lesson_type,
-      student_id: form.student_id ?? null, attended: form.student_id ? form.attended : null,
+      student_id: form.student_id ?? null,
+      attended: form.student_id ? form.attended : null,
+      absence_type: isAbsent ? (form.absence_type ?? null) : null,
+      makeup_date: isAbsent && form.makeup_date ? form.makeup_date : null,
+      makeup_done: false,
       group_id: form.group_id ?? null, content: form.content.trim(),
       next_goal: form.next_goal.trim() || null, status: 'submitted',
     })
@@ -332,6 +386,27 @@ function TodayView({ instructor }: { instructor: Instructor }) {
         </button>
       </div>
 
+      {/* 보강 대기 */}
+      {pendingMakeups.length > 0 && (
+        <div style={{ background:'rgba(136,120,232,0.08)', border:'1px solid rgba(136,120,232,0.25)', borderRadius:10, padding:'12px 14px', marginBottom:16 }}>
+          <div style={{ fontSize:12, fontWeight:800, color:'#8878e8', marginBottom:8 }}>보강 대기 ({pendingMakeups.length})</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {pendingMakeups.map(ev => (
+              <div key={ev.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div>
+                  <span style={{ fontSize:13, fontWeight:700 }}>{(ev.student as any)?.name}</span>
+                  <span style={{ fontSize:11, color:'#888', marginLeft:6 }}>{ev.lesson_type} · 예정 {ev.makeup_date}</span>
+                </div>
+                <button onClick={() => completeMakeup(ev.id)} style={{
+                  background:'rgba(96,176,128,0.15)', border:'1px solid rgba(96,176,128,0.4)',
+                  color:'#60b080', borderRadius:7, padding:'4px 10px', fontSize:11, cursor:'pointer',
+                }}>완료</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {items.length === 0 && (
         <div style={{ textAlign:'center', color:'#555', padding:'40px 0', fontSize:13 }}>
           오늘 정규 스케줄이 없어요
@@ -344,6 +419,8 @@ function TodayView({ instructor }: { instructor: Instructor }) {
           const id = item.kind === 'individual' ? item.assignment.id : item.group.id
           const evalDone = getEvalForItem(item)
           const isExpanded = expandedId === id
+          const rsInfo = item.kind === 'individual' ? getRescheduleInfo(item.assignment) : null
+          const quotaExceeded = rsInfo ? rsInfo.used >= rsInfo.quota : false
 
           return (
             <div key={id} style={{ background:'#141416', borderRadius:12, border:`1px solid ${evalDone ? '#2a3a2a' : '#222'}`, overflow:'hidden' }}>
@@ -351,10 +428,23 @@ function TodayView({ instructor }: { instructor: Instructor }) {
                 <div>
                   {item.kind === 'individual' ? (
                     <>
-                      <div style={{ fontSize:15, fontWeight:700 }}>{item.assignment.student?.name}</div>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <span style={{ fontSize:15, fontWeight:700 }}>{item.assignment.student?.name}</span>
+                        {rsInfo && (
+                          <span style={{
+                            fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:5,
+                            background: quotaExceeded ? 'rgba(224,112,96,0.15)' : 'rgba(96,176,128,0.12)',
+                            color: quotaExceeded ? '#e07060' : '#60b080',
+                            border: `1px solid ${quotaExceeded ? 'rgba(224,112,96,0.35)' : 'rgba(96,176,128,0.3)'}`,
+                          }}>
+                            변경 {rsInfo.used}/{rsInfo.quota}
+                          </span>
+                        )}
+                      </div>
                       <div style={{ fontSize:11, color:'#888', marginTop:2 }}>
                         {item.assignment.lesson_type}
                         {item.assignment.start_time && <span style={{ marginLeft:6 }}>{item.assignment.start_time.slice(0,5)}</span>}
+                        {item.assignment.enrolled_at && <span style={{ marginLeft:6, color:'#555' }}>등록 {item.assignment.enrolled_at}</span>}
                       </div>
                     </>
                   ) : (
@@ -367,18 +457,34 @@ function TodayView({ instructor }: { instructor: Instructor }) {
                     </>
                   )}
                 </div>
-                {evalDone ? (
-                  <StatusBadge status={evalDone.status} />
-                ) : (
-                  <button onClick={() => openForm(item)} style={{
-                    background: isExpanded ? '#1e2a1e' : '#1a1a1c',
-                    border: `1px solid ${isExpanded ? '#60b080' : '#333'}`,
-                    color: isExpanded ? '#60b080' : '#aaa',
-                    borderRadius:8, padding:'6px 13px', fontSize:12, fontWeight:600, cursor:'pointer',
-                  }}>
-                    {isExpanded ? '취소' : '수업 기록'}
-                  </button>
-                )}
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  {item.kind === 'individual' && (
+                    <button
+                      onClick={() => logReschedule(item.assignment)}
+                      disabled={reschedulingId === item.assignment.id}
+                      style={{
+                        background: quotaExceeded ? 'rgba(224,112,96,0.1)' : '#1a1a1c',
+                        border: `1px solid ${quotaExceeded ? 'rgba(224,112,96,0.4)' : '#333'}`,
+                        color: quotaExceeded ? '#e07060' : '#888',
+                        borderRadius:7, padding:'5px 9px', fontSize:11, cursor:'pointer', whiteSpace:'nowrap',
+                        opacity: reschedulingId === item.assignment.id ? 0.5 : 1,
+                      }}>
+                      {reschedulingId === item.assignment.id ? '...' : '변경'}
+                    </button>
+                  )}
+                  {evalDone ? (
+                    <StatusBadge status={evalDone.status} />
+                  ) : (
+                    <button onClick={() => openForm(item)} style={{
+                      background: isExpanded ? '#1e2a1e' : '#1a1a1c',
+                      border: `1px solid ${isExpanded ? '#60b080' : '#333'}`,
+                      color: isExpanded ? '#60b080' : '#aaa',
+                      borderRadius:8, padding:'6px 13px', fontSize:12, fontWeight:600, cursor:'pointer',
+                    }}>
+                      {isExpanded ? '취소' : '수업 기록'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {isExpanded && form && (
@@ -388,22 +494,50 @@ function TodayView({ instructor }: { instructor: Instructor }) {
                     <input type="date" value={form.date} onChange={e => setForm(f => f && ({ ...f, date:e.target.value }))} style={inputStyle} />
                   </div>
                   {form.student_id && (
-                    <div>
-                      <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:6 }}>출석</label>
-                      <div style={{ display:'flex', gap:8 }}>
-                        {[true, false].map(v => (
-                          <button key={String(v)} onClick={() => setForm(f => f && ({ ...f, attended: v }))} style={{
-                            flex:1, padding:'8px', borderRadius:8,
-                            border:`1px solid ${form.attended===v ? (v ? '#60b080' : '#e07060') : '#333'}`,
-                            background: form.attended===v ? (v ? 'rgba(96,176,128,0.15)' : 'rgba(224,112,96,0.15)') : '#1a1a1c',
-                            color: form.attended===v ? (v ? '#60b080' : '#e07060') : '#666',
-                            fontSize:13, fontWeight:700, cursor:'pointer',
-                          }}>
-                            {v ? '출석' : '결석'}
-                          </button>
-                        ))}
+                    <>
+                      <div>
+                        <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:6 }}>출석</label>
+                        <div style={{ display:'flex', gap:8 }}>
+                          {[true, false].map(v => (
+                            <button key={String(v)} onClick={() => setForm(f => f && ({ ...f, attended:v, absence_type:null, makeup_date:'' }))} style={{
+                              flex:1, padding:'8px', borderRadius:8,
+                              border:`1px solid ${form.attended===v ? (v ? '#60b080' : '#e07060') : '#333'}`,
+                              background: form.attended===v ? (v ? 'rgba(96,176,128,0.15)' : 'rgba(224,112,96,0.15)') : '#1a1a1c',
+                              color: form.attended===v ? (v ? '#60b080' : '#e07060') : '#666',
+                              fontSize:13, fontWeight:700, cursor:'pointer',
+                            }}>
+                              {v ? '출석' : '결석'}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                      {!form.attended && (
+                        <>
+                          <div>
+                            <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:6 }}>결석 유형</label>
+                            <div style={{ display:'flex', gap:8 }}>
+                              {(['advance','same_day'] as const).map(t => (
+                                <button key={t} onClick={() => setForm(f => f && ({ ...f, absence_type:t }))} style={{
+                                  flex:1, padding:'8px', borderRadius:8,
+                                  border:`1px solid ${form.absence_type===t ? '#8878e8' : '#333'}`,
+                                  background: form.absence_type===t ? 'rgba(136,120,232,0.15)' : '#1a1a1c',
+                                  color: form.absence_type===t ? '#8878e8' : '#666',
+                                  fontSize:12, fontWeight:700, cursor:'pointer',
+                                }}>
+                                  {t === 'advance' ? '사전 결석' : '당일 결석'}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          {form.absence_type === 'same_day' && (
+                            <div>
+                              <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>보강 예정일 <span style={{ color:'#555' }}>(선택)</span></label>
+                              <input type="date" value={form.makeup_date} onChange={e => setForm(f => f && ({ ...f, makeup_date:e.target.value }))} style={inputStyle} />
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
                   )}
                   <div>
                     <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>수업 내용 <span style={{ color:'#e07060' }}>*</span></label>
@@ -1483,7 +1617,7 @@ function AssignmentsManage() {
   const [students, setStudents]       = useState<any[]>([])
   const [loading, setLoading]         = useState(true)
   const [showForm, setShowForm]       = useState(false)
-  const [form, setForm] = useState({ instructor_id:'', student_id:'', lesson_type:'전공' as LessonType, day_of_week:'', start_time:'' })
+  const [form, setForm] = useState({ instructor_id:'', student_id:'', lesson_type:'전공' as LessonType, day_of_week:'', start_time:'', enrolled_at:'' })
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
@@ -1507,8 +1641,9 @@ function AssignmentsManage() {
       instructor_id: form.instructor_id, student_id: form.student_id, lesson_type: form.lesson_type,
       day_of_week: form.day_of_week !== '' ? parseInt(form.day_of_week) : null,
       start_time: form.start_time || null,
+      enrolled_at: form.enrolled_at || null,
     })
-    setForm({ instructor_id:'', student_id:'', lesson_type:'전공', day_of_week:'', start_time:'' })
+    setForm({ instructor_id:'', student_id:'', lesson_type:'전공', day_of_week:'', start_time:'', enrolled_at:'' })
     await load(); setSaving(false); setShowForm(false)
   }
 
@@ -1537,6 +1672,7 @@ function AssignmentsManage() {
                 {a.lesson_type}
                 {a.day_of_week != null && <span style={{ marginLeft:6 }}>{DAYS[a.day_of_week]}</span>}
                 {a.start_time && <span style={{ marginLeft:4 }}>{a.start_time.slice(0,5)}</span>}
+                {a.enrolled_at && <span style={{ marginLeft:6, color:'#555' }}>등록 {a.enrolled_at}</span>}
               </div>
             </div>
             <button onClick={() => deactivate(a.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#e07060', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>제거</button>
@@ -1560,7 +1696,7 @@ function AssignmentsManage() {
           </FormField>
           <FormField label="수업 종류">
             <select value={form.lesson_type} onChange={e => setForm(f=>({...f,lesson_type:e.target.value as LessonType}))} style={selectStyle}>
-              {(['전공','부전공','전문반','취미'] as LessonType[]).map(t => <option key={t} value={t}>{t}</option>)}
+              {(['전공','오디션','부전공','전문반','취미','댄스'] as LessonType[]).map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </FormField>
           <FormField label="요일">
@@ -1571,6 +1707,9 @@ function AssignmentsManage() {
           </FormField>
           <FormField label="시작 시간">
             <input type="time" value={form.start_time} onChange={e => setForm(f=>({...f,start_time:e.target.value}))} style={inputStyle} />
+          </FormField>
+          <FormField label="등록일 (28일 기준)">
+            <input type="date" value={form.enrolled_at} onChange={e => setForm(f=>({...f,enrolled_at:e.target.value}))} style={inputStyle} />
           </FormField>
           <SaveButton onClick={save} loading={saving} />
         </BottomSheet>

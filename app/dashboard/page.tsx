@@ -29,21 +29,25 @@ function getPayrollRange(payDay: 15 | 25, offset = 0) {
   const m = now.getMonth() + offset
   if (payDay === 15) {
     return {
-      start:    new Date(y, m - 1, 11).toISOString().split('T')[0],
-      end:      new Date(y, m,     10).toISOString().split('T')[0],
+      start:    localDateStr(new Date(y, m - 1, 11)),
+      end:      localDateStr(new Date(y, m,     10)),
       payLabel: `${new Date(y, m, 1).getMonth() + 1}월 15일 지급`,
     }
   } else {
     return {
-      start:    new Date(y, m - 1, 21).toISOString().split('T')[0],
-      end:      new Date(y, m,     20).toISOString().split('T')[0],
+      start:    localDateStr(new Date(y, m - 1, 21)),
+      end:      localDateStr(new Date(y, m,     20)),
       payLabel: `${new Date(y, m, 1).getMonth() + 1}월 25일 지급`,
     }
   }
 }
 
+function localDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
 function todayStr() {
-  return new Date().toISOString().split('T')[0]
+  return localDateStr(new Date())
 }
 
 // ── 공통 컴포넌트 ─────────────────────────────────────────────
@@ -1649,6 +1653,8 @@ function AssignmentsManage() {
   useEffect(() => { load() }, [load])
 
   async function save() {
+    if (!form.instructor_id) { alert('강사를 선택해주세요'); return }
+    if (!form.student_id) { alert('학생을 선택해주세요'); return }
     setSaving(true)
     await supabase.from('assignments').insert({
       instructor_id: form.instructor_id, student_id: form.student_id, lesson_type: form.lesson_type,
@@ -1759,6 +1765,8 @@ function GroupsManage() {
   useEffect(() => { load() }, [load])
 
   async function saveGroup() {
+    if (!form.name.trim()) { alert('수업명을 입력해주세요'); return }
+    if (!form.instructor_id) { alert('강사를 선택해주세요'); return }
     setSaving(true)
     await supabase.from('group_classes').insert({
       name:form.name, instructor_id:form.instructor_id,
@@ -1897,14 +1905,14 @@ function RatesManage() {
     <div>
       <div style={{ fontSize:12, color:'#888', marginBottom:12 }}>셀을 눌러 단가를 수정할 수 있어요 (단위: 원)</div>
       <div style={{ background:'#141416', borderRadius:10, border:'1px solid #222', overflow:'hidden' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'40px repeat(5, 1fr)', background:'#1a1a1c', borderBottom:'1px solid #222' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'40px repeat(7, 1fr)', background:'#1a1a1c', borderBottom:'1px solid #222' }}>
           <div style={{ padding:'8px 4px' }} />
           {LESSON_TYPES.map(t => (
             <div key={t} style={{ padding:'8px 2px', textAlign:'center', fontSize:10, fontWeight:700, color:'#aaa' }}>{t}</div>
           ))}
         </div>
         {GRADES.map(grade => (
-          <div key={grade} style={{ display:'grid', gridTemplateColumns:'40px repeat(5, 1fr)', borderBottom:'1px solid #1a1a1c' }}>
+          <div key={grade} style={{ display:'grid', gridTemplateColumns:'40px repeat(7, 1fr)', borderBottom:'1px solid #1a1a1c' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'10px 0' }}>
               <Badge grade={grade} />
             </div>

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 
 const ADMIN_EMAIL = 'noid80@hanmail.net'
-const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(req: NextRequest) {
   const { instructor, lines, total_before, tax, total_after, range, callerEmail } = await req.json()
@@ -77,6 +76,7 @@ export async function POST(req: NextRequest) {
 </div>
 </body></html>`
 
+  const resend = new Resend(process.env.RESEND_API_KEY)
   const { error } = await resend.emails.send({
     from: 'KH Music <payslip@khmusic.co.kr>',
     to: [instructor.email],

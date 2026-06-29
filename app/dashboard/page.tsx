@@ -934,6 +934,25 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
   )
 }
 
+function downloadBankExcel(payrolls: InstructorPayroll[], targetMonth: Date, payDay: 15 | 25) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const XLSX = require('xlsx')
+  const month = targetMonth.getMonth() + 1
+  const year = targetMonth.getFullYear()
+  const rows = payrolls.map(p => [
+    p.instructor.bank_code ?? '',
+    p.instructor.account_number ?? '',
+    p.total_after,
+    p.instructor.name,
+    '급여',
+  ])
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!cols'] = [{ wch: 6 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 6 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Star급여이체')
+  XLSX.writeFile(wb, `${year}년_${month}월_${payDay}일_은행이체.xlsx`)
+}
+
 function downloadExcel(payrolls15: InstructorPayroll[], payrolls25: InstructorPayroll[], targetMonth: Date) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const XLSX = require('xlsx')
@@ -1058,10 +1077,24 @@ function PayrollView({ userEmail }: { userEmail: string }) {
             <div style={{ textAlign:'center', color:'#555', padding:'30px 0', fontSize:13 }}>해당 기간에 승인된 수업이 없어요</div>
           )}
           {(payrolls15.length > 0 || payrolls25.length > 0) && (
-            <button onClick={() => downloadExcel(payrolls15, payrolls25, targetMonth)} style={{
-              width:'100%', background:'#1a3a1a', border:'1px solid #2d6a2d', color:'#60b080',
-              borderRadius:9, padding:'12px', fontSize:13, fontWeight:700, cursor:'pointer', marginTop:8,
-            }}>엑셀 다운로드 (세무서용)</button>
+            <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:8 }}>
+              <button onClick={() => downloadExcel(payrolls15, payrolls25, targetMonth)} style={{
+                width:'100%', background:'#1a3a1a', border:'1px solid #2d6a2d', color:'#60b080',
+                borderRadius:9, padding:'12px', fontSize:13, fontWeight:700, cursor:'pointer',
+              }}>엑셀 다운로드 (세무서용)</button>
+              {payrolls15.length > 0 && (
+                <button onClick={() => downloadBankExcel(payrolls15, targetMonth, 15)} style={{
+                  width:'100%', background:'#1a2a3a', border:'1px solid #2d4a6a', color:'#6090c0',
+                  borderRadius:9, padding:'12px', fontSize:13, fontWeight:700, cursor:'pointer',
+                }}>은행이체 엑셀 — 15일</button>
+              )}
+              {payrolls25.length > 0 && (
+                <button onClick={() => downloadBankExcel(payrolls25, targetMonth, 25)} style={{
+                  width:'100%', background:'#1a2a3a', border:'1px solid #2d4a6a', color:'#6090c0',
+                  borderRadius:9, padding:'12px', fontSize:13, fontWeight:700, cursor:'pointer',
+                }}>은행이체 엑셀 — 25일</button>
+              )}
+            </div>
           )}
         </>
       )}
@@ -1127,8 +1160,8 @@ function InstructorsManage() {
 
   useEffect(() => { load() }, [load])
 
-  function openNew() { setEditing(null); setForm({ name:'', phone:'', email:'', grade:'B', pay_day:15, resident_number:'' }); setShowForm(true) }
-  function openEdit(i: Instructor) { setEditing(i); setForm({ name:i.name, phone:i.phone, email:i.email??'', grade:i.grade, pay_day:i.pay_day??15, resident_number:i.resident_number??'' }); setShowForm(true) }
+  function openNew() { setEditing(null); setForm({ name:'', phone:'', email:'', grade:'B', pay_day:15, resident_number:'', bank_code:'', account_number:'' }); setShowForm(true) }
+  function openEdit(i: Instructor) { setEditing(i); setForm({ name:i.name, phone:i.phone, email:i.email??'', grade:i.grade, pay_day:i.pay_day??15, resident_number:i.resident_number??'', bank_code:i.bank_code??'', account_number:i.account_number??'' }); setShowForm(true) }
 
   async function save() {
     if (!form.name.trim()) return
@@ -1136,9 +1169,9 @@ function InstructorsManage() {
     if (!form.email.trim()) { alert('이메일을 입력해주세요'); return }
     setSaving(true)
     if (editing) {
-      await supabase.from('instructors').update({ name:form.name, phone:form.phone, email:form.email, grade:form.grade, pay_day:form.pay_day, resident_number:form.resident_number||null }).eq('id', editing.id)
+      await supabase.from('instructors').update({ name:form.name, phone:form.phone, email:form.email, grade:form.grade, pay_day:form.pay_day, resident_number:form.resident_number||null, bank_code:form.bank_code||null, account_number:form.account_number||null }).eq('id', editing.id)
     } else {
-      await supabase.from('instructors').insert({ name:form.name, phone:form.phone, email:form.email, grade:form.grade, pay_day:form.pay_day, resident_number:form.resident_number||null })
+      await supabase.from('instructors').insert({ name:form.name, phone:form.phone, email:form.email, grade:form.grade, pay_day:form.pay_day, resident_number:form.resident_number||null, bank_code:form.bank_code||null, account_number:form.account_number||null })
       const { data: { user } } = await supabase.auth.getUser()
       await fetch('/api/create-instructor', {
         method: 'POST',
@@ -1219,6 +1252,16 @@ function InstructorsManage() {
             </div>
           </FormField>
           <FormField label="주민번호"><input value={form.resident_number??''} onChange={e => setForm(f=>({...f,resident_number:e.target.value}))} style={inputStyle} placeholder="000000-0000000" /></FormField>
+          <div style={{ display:'flex', gap:8 }}>
+            <div style={{ width:90 }}>
+              <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:5 }}>은행코드</label>
+              <input value={form.bank_code??''} onChange={e => setForm(f=>({...f,bank_code:e.target.value}))} style={inputStyle} placeholder="020" />
+            </div>
+            <div style={{ flex:1 }}>
+              <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:5 }}>계좌번호</label>
+              <input value={form.account_number??''} onChange={e => setForm(f=>({...f,account_number:e.target.value}))} style={inputStyle} placeholder="0000-000-000000" />
+            </div>
+          </div>
           <FormField label="코드">
             <div style={{ display:'flex', gap:6 }}>
               {GRADES.map(g => (

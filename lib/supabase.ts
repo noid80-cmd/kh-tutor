@@ -20,6 +20,8 @@ export interface Instructor {
   grade: Grade
   pay_day: 15 | 25
   resident_number: string | null
+  bank_code: string | null
+  account_number: string | null
   is_active: boolean
   created_at: string
 }

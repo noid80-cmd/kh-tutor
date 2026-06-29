@@ -772,9 +772,12 @@ interface InstructorPayroll {
   total_after: number
 }
 
-function printPayslip(p: InstructorPayroll, range: { start: string; end: string; payLabel: string }) {
+function printPayslip(p: InstructorPayroll, range: { start: string; end: string; payLabel: string }, ex: { parking: number; bonus: number }) {
   const w = window.open('', '_blank')
   if (!w) return
+  const eff_before = p.total_before + ex.bonus
+  const eff_tax    = Math.round(eff_before * 0.033)
+  const eff_after  = eff_before - eff_tax + ex.parking
   const rows = p.lines.map(l => `
     <tr>
       <td>${l.lesson_type}</td>
@@ -782,6 +785,10 @@ function printPayslip(p: InstructorPayroll, range: { start: string; end: string;
       <td style="text-align:right">${l.rate.toLocaleString()}원</td>
       <td style="text-align:right">${l.subtotal.toLocaleString()}원</td>
     </tr>`).join('')
+  const extraRows = [
+    ex.bonus   > 0 ? `<tr><td>추가수당(세전)</td><td style="text-align:center">-</td><td style="text-align:right">-</td><td style="text-align:right">${ex.bonus.toLocaleString()}원</td></tr>` : '',
+    ex.parking > 0 ? `<tr><td>주차료(세금없음)</td><td style="text-align:center">-</td><td style="text-align:right">-</td><td style="text-align:right">${ex.parking.toLocaleString()}원</td></tr>` : '',
+  ].join('')
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>강의료 명세서</title>
   <style>
     body { font-family: 'Apple SD Gothic Neo', sans-serif; max-width: 480px; margin: 40px auto; color: #111; font-size: 14px; }
@@ -808,31 +815,36 @@ function printPayslip(p: InstructorPayroll, range: { start: string; end: string;
   </div>
   <table>
     <tr><th>수업 종류</th><th style="text-align:center">횟수</th><th style="text-align:right">단가</th><th style="text-align:right">금액</th></tr>
-    ${rows}
+    ${rows}${extraRows}
   </table>
   <div class="total">
-    <div class="total-row"><span>세전 합계</span><span>${p.total_before.toLocaleString()}원</span></div>
-    <div class="total-row tax"><span>원천징수 (3.3%)</span><span>-${p.tax.toLocaleString()}원</span></div>
-    <div class="total-row final"><span>지급액</span><span>${p.total_after.toLocaleString()}원</span></div>
+    <div class="total-row"><span>세전 합계</span><span>${eff_before.toLocaleString()}원</span></div>
+    <div class="total-row tax"><span>원천징수 (3.3%)</span><span>-${eff_tax.toLocaleString()}원</span></div>
+    ${ex.parking > 0 ? `<div class="total-row"><span>주차료 (세금없음)</span><span>+${ex.parking.toLocaleString()}원</span></div>` : ''}
+    <div class="total-row final"><span>지급액</span><span>${eff_after.toLocaleString()}원</span></div>
   </div>
   <script>window.onload = () => { window.print() }<\/script>
   </body></html>`)
   w.document.close()
 }
 
-function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEmail }: {
+function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEmail, extras, setExtra }: {
   title: string
   payrolls: InstructorPayroll[]
   range: { start: string; end: string; payLabel: string }
   expanded: string | null
   setExpanded: (id: string | null) => void
   userEmail: string
+  extras: Record<string, InstructorExtra>
+  setExtra: (id: string, field: 'parking' | 'bonus', val: number) => void
 }) {
   const [emailingIds, setEmailingIds] = useState<Set<string>>(new Set())
   const [emailedIds, setEmailedIds]   = useState<Set<string>>(new Set())
 
   async function sendEmail(p: InstructorPayroll) {
     if (!p.instructor.email) { alert('강사 이메일이 등록되지 않았어요'); return }
+    const ex = extras[p.instructor.id] ?? { parking:0, bonus:0 }
+    const { total_before, tax, total_after } = getEffective(p, ex)
     setEmailingIds(prev => new Set(prev).add(p.instructor.id))
     const res = await fetch('/api/send-payslip', {
       method: 'POST',
@@ -840,9 +852,8 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
       body: JSON.stringify({
         instructor: p.instructor,
         lines: p.lines,
-        total_before: p.total_before,
-        tax: p.tax,
-        total_after: p.total_after,
+        total_before, tax, total_after,
+        extras: ex,
         range,
         callerEmail: userEmail,
       }),
@@ -853,7 +864,17 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
     else alert('전송 실패: ' + json.error)
   }
 
+  const extraInputStyle: React.CSSProperties = {
+    background:'#0e0e10', border:'1px solid #2a2a2e', color:'#e8e4d8',
+    borderRadius:6, padding:'5px 8px', fontSize:12, width:'100%', boxSizing:'border-box',
+  }
+
   if (payrolls.length === 0) return null
+
+  const totalBefore = payrolls.reduce((s,p) => s + getEffective(p, extras[p.instructor.id] ?? {parking:0,bonus:0}).total_before, 0)
+  const totalTax    = payrolls.reduce((s,p) => s + getEffective(p, extras[p.instructor.id] ?? {parking:0,bonus:0}).tax, 0)
+  const totalAfter  = payrolls.reduce((s,p) => s + getEffective(p, extras[p.instructor.id] ?? {parking:0,bonus:0}).total_after, 0)
+
   return (
     <div style={{ marginBottom: 24 }}>
       <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
@@ -862,90 +883,127 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
       </div>
       <div style={{ background:'rgba(192,160,96,0.08)', border:'1px solid rgba(192,160,96,0.2)', borderRadius:10, padding:'10px 14px', marginBottom:10 }}>
         <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#888', marginBottom:2 }}>
-          <span>세전 합계</span><span>{fmt만원(payrolls.reduce((s,p) => s+p.total_before, 0))}</span>
+          <span>세전 합계</span><span>{fmt만원(totalBefore)}</span>
         </div>
         <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#e07060', marginBottom:2 }}>
-          <span>원천징수(3.3%)</span><span>-{fmt만원(payrolls.reduce((s,p) => s+p.tax, 0))}</span>
+          <span>원천징수(3.3%)</span><span>-{fmt만원(totalTax)}</span>
         </div>
         <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:800, color:'#c0a060' }}>
-          <span>지급 합계</span><span>{fmt만원(payrolls.reduce((s,p) => s+p.total_after, 0))}</span>
+          <span>지급 합계</span><span>{fmt만원(totalAfter)}</span>
         </div>
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-        {payrolls.map(p => (
-          <div key={p.instructor.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', overflow:'hidden' }}>
-            <div onClick={() => setExpanded(expanded === p.instructor.id ? null : p.instructor.id)}
-              style={{ padding:'12px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer' }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <Badge grade={p.instructor.grade} />
-                <span style={{ fontSize:14, fontWeight:700 }}>{p.instructor.name}</span>
-                <span style={{ fontSize:11, color:'#666' }}>{p.lines.reduce((s,l) => s+l.count, 0)}회</span>
-              </div>
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <div style={{ textAlign:'right' }}>
-                  <div style={{ fontSize:14, fontWeight:800, color:'#c0a060' }}>{fmt만원(p.total_after)}</div>
-                  <div style={{ fontSize:10, color:'#666' }}>세후</div>
+        {payrolls.map(p => {
+          const ex = extras[p.instructor.id] ?? { parking:0, bonus:0 }
+          const { total_before: eff_before, tax: eff_tax, total_after: eff_after } = getEffective(p, ex)
+          return (
+            <div key={p.instructor.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', overflow:'hidden' }}>
+              <div onClick={() => setExpanded(expanded === p.instructor.id ? null : p.instructor.id)}
+                style={{ padding:'12px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <Badge grade={p.instructor.grade} />
+                  <span style={{ fontSize:14, fontWeight:700 }}>{p.instructor.name}</span>
+                  <span style={{ fontSize:11, color:'#666' }}>{p.lines.reduce((s,l) => s+l.count, 0)}회</span>
                 </div>
-                <div style={{ display:'flex', gap:6 }}>
-                  <button onClick={e => { e.stopPropagation(); printPayslip(p, range) }} style={{
-                    background:'#1e1e22', border:'1px solid #333', color:'#aaa',
-                    borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer', whiteSpace:'nowrap',
-                  }}>명세서</button>
-                  <button onClick={e => { e.stopPropagation(); sendEmail(p) }}
-                    disabled={emailingIds.has(p.instructor.id) || emailedIds.has(p.instructor.id)}
-                    style={{
-                      background: emailedIds.has(p.instructor.id) ? 'rgba(96,176,128,0.15)' : '#1e1e22',
-                      border: `1px solid ${emailedIds.has(p.instructor.id) ? 'rgba(96,176,128,0.4)' : '#333'}`,
-                      color: emailedIds.has(p.instructor.id) ? '#60b080' : '#aaa',
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ textAlign:'right' }}>
+                    <div style={{ fontSize:14, fontWeight:800, color:'#c0a060' }}>{fmt만원(eff_after)}</div>
+                    <div style={{ fontSize:10, color:'#666' }}>세후</div>
+                  </div>
+                  <div style={{ display:'flex', gap:6 }}>
+                    <button onClick={e => { e.stopPropagation(); printPayslip(p, range, ex) }} style={{
+                      background:'#1e1e22', border:'1px solid #333', color:'#aaa',
                       borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer', whiteSpace:'nowrap',
-                      opacity: emailingIds.has(p.instructor.id) ? 0.5 : 1,
-                    }}>
-                    {emailingIds.has(p.instructor.id) ? '전송중' : emailedIds.has(p.instructor.id) ? '전송됨' : '이메일'}
-                  </button>
+                    }}>명세서</button>
+                    <button onClick={e => { e.stopPropagation(); sendEmail(p) }}
+                      disabled={emailingIds.has(p.instructor.id) || emailedIds.has(p.instructor.id)}
+                      style={{
+                        background: emailedIds.has(p.instructor.id) ? 'rgba(96,176,128,0.15)' : '#1e1e22',
+                        border: `1px solid ${emailedIds.has(p.instructor.id) ? 'rgba(96,176,128,0.4)' : '#333'}`,
+                        color: emailedIds.has(p.instructor.id) ? '#60b080' : '#aaa',
+                        borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer', whiteSpace:'nowrap',
+                        opacity: emailingIds.has(p.instructor.id) ? 0.5 : 1,
+                      }}>
+                      {emailingIds.has(p.instructor.id) ? '전송중' : emailedIds.has(p.instructor.id) ? '전송됨' : '이메일'}
+                    </button>
+                  </div>
                 </div>
               </div>
+              {expanded === p.instructor.id && (
+                <div style={{ borderTop:'1px solid #222', padding:'12px 14px', background:'#111113' }}>
+                  {p.lines.map(l => (
+                    <div key={l.lesson_type} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'4px 0' }}>
+                      <span style={{ fontSize:12, color:'#aaa', width:50 }}>{l.lesson_type}</span>
+                      <span style={{ fontSize:12, color:'#888' }}>{l.count}회 × {fmt만원(l.rate)}</span>
+                      <span style={{ fontSize:12, fontWeight:600 }}>{fmt만원(l.subtotal)}</span>
+                    </div>
+                  ))}
+                  {/* 추가 지급 입력 */}
+                  <div style={{ borderTop:'1px solid #1e1e22', marginTop:10, paddingTop:10 }}>
+                    <div style={{ fontSize:11, color:'#666', fontWeight:700, marginBottom:8 }}>추가 지급</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+                      <div>
+                        <label style={{ fontSize:10, color:'#666', display:'block', marginBottom:3 }}>주차료 (세금없음, 세후)</label>
+                        <input type="number" min={0} value={ex.parking || ''} placeholder="0"
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setExtra(p.instructor.id, 'parking', +e.target.value || 0)}
+                          style={extraInputStyle} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize:10, color:'#666', display:'block', marginBottom:3 }}>추가수당 세전 (특강/채점)</label>
+                        <input type="number" min={0} value={ex.bonus || ''} placeholder="0"
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setExtra(p.instructor.id, 'bonus', +e.target.value || 0)}
+                          style={extraInputStyle} />
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ borderTop:'1px solid #222', marginTop:2, paddingTop:8 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#888', marginBottom:3 }}>
+                      <span>세전</span><span>{fmt만원(eff_before)}</span>
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#e07060', marginBottom:3 }}>
+                      <span>원천징수(3.3%)</span><span>-{fmt만원(eff_tax)}</span>
+                    </div>
+                    {ex.parking > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#6090c0', marginBottom:3 }}>
+                        <span>주차료(세금없음)</span><span>+{fmt만원(ex.parking)}</span>
+                      </div>
+                    )}
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:14, fontWeight:800, color:'#c0a060', marginTop:6 }}>
+                      <span>지급액(세후)</span><span>{fmt만원(eff_after)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-            {expanded === p.instructor.id && (
-              <div style={{ borderTop:'1px solid #222', padding:'12px 14px', background:'#111113' }}>
-                {p.lines.map(l => (
-                  <div key={l.lesson_type} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'4px 0' }}>
-                    <span style={{ fontSize:12, color:'#aaa', width:50 }}>{l.lesson_type}</span>
-                    <span style={{ fontSize:12, color:'#888' }}>{l.count}회 × {fmt만원(l.rate)}</span>
-                    <span style={{ fontSize:12, fontWeight:600 }}>{fmt만원(l.subtotal)}</span>
-                  </div>
-                ))}
-                <div style={{ borderTop:'1px solid #222', marginTop:8, paddingTop:8 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#888', marginBottom:3 }}>
-                    <span>세전</span><span>{fmt만원(p.total_before)}</span>
-                  </div>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#e07060', marginBottom:3 }}>
-                    <span>원천징수(3.3%)</span><span>-{fmt만원(p.tax)}</span>
-                  </div>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:14, fontWeight:800, color:'#c0a060', marginTop:6 }}>
-                    <span>지급액(세후)</span><span>{fmt만원(p.total_after)}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
 }
 
-function downloadBankExcel(payrolls: InstructorPayroll[], targetMonth: Date, payDay: 15 | 25) {
+interface InstructorExtra { parking: number; bonus: number }
+interface MasterClass { id: string; name: string; net: number }
+
+function getEffective(p: InstructorPayroll, ex: InstructorExtra) {
+  const total_before = p.total_before + ex.bonus
+  const tax = Math.round(total_before * 0.033)
+  const total_after = total_before - tax + ex.parking
+  return { total_before, tax, total_after }
+}
+
+function downloadBankExcel(payrolls: InstructorPayroll[], extras: Record<string, InstructorExtra>, targetMonth: Date, payDay: 15 | 25) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const XLSX = require('xlsx')
   const month = targetMonth.getMonth() + 1
   const year = targetMonth.getFullYear()
-  const rows = payrolls.map(p => [
-    p.instructor.bank_code ?? '',
-    p.instructor.account_number ?? '',
-    p.total_after,
-    p.instructor.name,
-    '급여',
-  ])
+  const rows = payrolls.map(p => {
+    const ex = extras[p.instructor.id] ?? { parking: 0, bonus: 0 }
+    const { total_after } = getEffective(p, ex)
+    return [p.instructor.bank_code ?? '', p.instructor.account_number ?? '', total_after, p.instructor.name, '급여']
+  })
   const ws = XLSX.utils.aoa_to_sheet(rows)
   ws['!cols'] = [{ wch: 6 }, { wch: 20 }, { wch: 12 }, { wch: 10 }, { wch: 6 }]
   const wb = XLSX.utils.book_new()
@@ -953,7 +1011,11 @@ function downloadBankExcel(payrolls: InstructorPayroll[], targetMonth: Date, pay
   XLSX.writeFile(wb, `${year}년_${month}월_${payDay}일_은행이체.xlsx`)
 }
 
-function downloadExcel(payrolls15: InstructorPayroll[], payrolls25: InstructorPayroll[], targetMonth: Date) {
+function downloadExcel(
+  payrolls15: InstructorPayroll[], payrolls25: InstructorPayroll[],
+  extras: Record<string, InstructorExtra>, masterClasses: MasterClass[],
+  targetMonth: Date
+) {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const XLSX = require('xlsx')
   const month = targetMonth.getMonth() + 1
@@ -964,15 +1026,33 @@ function downloadExcel(payrolls15: InstructorPayroll[], payrolls25: InstructorPa
   rows.push(['강사', '세전', '세후', '주민번호'])
 
   for (const p of payrolls15) {
-    rows.push([p.instructor.name, p.total_before, p.total_after, p.instructor.resident_number ?? ''])
+    const { total_before, total_after } = getEffective(p, extras[p.instructor.id] ?? { parking:0, bonus:0 })
+    rows.push([p.instructor.name, total_before, total_after, p.instructor.resident_number ?? ''])
   }
-  rows.push(['합', payrolls15.reduce((s,p) => s+p.total_before, 0), payrolls15.reduce((s,p) => s+p.total_after, 0), ''])
+  const sum15b = payrolls15.reduce((s,p) => s + getEffective(p, extras[p.instructor.id] ?? {parking:0,bonus:0}).total_before, 0)
+  const sum15a = payrolls15.reduce((s,p) => s + getEffective(p, extras[p.instructor.id] ?? {parking:0,bonus:0}).total_after, 0)
+  rows.push(['합', sum15b, sum15a, ''])
   rows.push([])
 
   for (const p of payrolls25) {
-    rows.push([p.instructor.name, p.total_before, p.total_after, p.instructor.resident_number ?? ''])
+    const { total_before, total_after } = getEffective(p, extras[p.instructor.id] ?? { parking:0, bonus:0 })
+    rows.push([p.instructor.name, total_before, total_after, p.instructor.resident_number ?? ''])
   }
-  rows.push(['합', payrolls25.reduce((s,p) => s+p.total_before, 0), payrolls25.reduce((s,p) => s+p.total_after, 0), ''])
+  const sum25b = payrolls25.reduce((s,p) => s + getEffective(p, extras[p.instructor.id] ?? {parking:0,bonus:0}).total_before, 0)
+  const sum25a = payrolls25.reduce((s,p) => s + getEffective(p, extras[p.instructor.id] ?? {parking:0,bonus:0}).total_after, 0)
+  rows.push(['합', sum25b, sum25a, ''])
+
+  if (masterClasses.length > 0) {
+    rows.push([])
+    rows.push(['마스터클래스', '세전', '세후', ''])
+    for (const mc of masterClasses) {
+      const before = Math.ceil(mc.net / 0.967)
+      rows.push([mc.name, before, mc.net, ''])
+    }
+    const mcSumB = masterClasses.reduce((s,mc) => s + Math.ceil(mc.net / 0.967), 0)
+    const mcSumA = masterClasses.reduce((s,mc) => s + mc.net, 0)
+    rows.push(['합', mcSumB, mcSumA, ''])
+  }
 
   const ws = XLSX.utils.aoa_to_sheet(rows)
   ws['!cols'] = [{ wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 18 }]
@@ -988,6 +1068,21 @@ function PayrollView({ userEmail }: { userEmail: string }) {
   const [loading, setLoading]       = useState(false)
   const [expanded, setExpanded]     = useState<string | null>(null)
   const [calculated, setCalculated] = useState(false)
+  const [extras, setExtras]         = useState<Record<string, InstructorExtra>>({})
+  const [masterClasses, setMasterClasses] = useState<MasterClass[]>([])
+
+  function setExtra(id: string, field: 'parking' | 'bonus', val: number) {
+    setExtras(prev => ({ ...prev, [id]: { ...(prev[id] ?? { parking:0, bonus:0 }), [field]: val } }))
+  }
+  function addMC() {
+    setMasterClasses(prev => [...prev, { id: crypto.randomUUID(), name:'', net:0 }])
+  }
+  function removeMC(id: string) {
+    setMasterClasses(prev => prev.filter(mc => mc.id !== id))
+  }
+  function updateMC(id: string, field: 'name' | 'net', val: string | number) {
+    setMasterClasses(prev => prev.map(mc => mc.id === id ? { ...mc, [field]: val } : mc))
+  }
 
   const range15 = getPayrollRange(15, monthOffset)
   const range25 = getPayrollRange(25, monthOffset)
@@ -1053,10 +1148,10 @@ function PayrollView({ userEmail }: { userEmail: string }) {
       <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>급여 정산</div>
       <div style={{ background:'#141416', borderRadius:12, border:'1px solid #222', padding:'14px', marginBottom:16 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
-          <button onClick={() => { setMonthOffset(o => o - 1); setCalculated(false) }}
+          <button onClick={() => { setMonthOffset(o => o - 1); setCalculated(false); setExtras({}); setMasterClasses([]) }}
             style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 12px', cursor:'pointer' }}>‹</button>
           <span style={{ fontSize:14, fontWeight:700 }}>{monthLabel}</span>
-          <button onClick={() => { setMonthOffset(o => o + 1); setCalculated(false) }}
+          <button onClick={() => { setMonthOffset(o => o + 1); setCalculated(false); setExtras({}); setMasterClasses([]) }}
             style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 12px', cursor:'pointer' }}>›</button>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:12 }}>
@@ -1071,30 +1166,57 @@ function PayrollView({ userEmail }: { userEmail: string }) {
 
       {calculated && (
         <>
-          <PayrollSection title="15일 지급" payrolls={payrolls15} range={range15} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} />
-          <PayrollSection title="25일 지급" payrolls={payrolls25} range={range25} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} />
+          <PayrollSection title="15일 지급" payrolls={payrolls15} range={range15} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} extras={extras} setExtra={setExtra} />
+          <PayrollSection title="25일 지급" payrolls={payrolls25} range={range25} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} extras={extras} setExtra={setExtra} />
           {payrolls15.length === 0 && payrolls25.length === 0 && (
             <div style={{ textAlign:'center', color:'#555', padding:'30px 0', fontSize:13 }}>해당 기간에 승인된 수업이 없어요</div>
           )}
           {(payrolls15.length > 0 || payrolls25.length > 0) && (
-            <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:8 }}>
-              <button onClick={() => downloadExcel(payrolls15, payrolls25, targetMonth)} style={{
-                width:'100%', background:'#1a3a1a', border:'1px solid #2d6a2d', color:'#60b080',
-                borderRadius:9, padding:'12px', fontSize:13, fontWeight:700, cursor:'pointer',
-              }}>엑셀 다운로드 (세무서용)</button>
-              {payrolls15.length > 0 && (
-                <button onClick={() => downloadBankExcel(payrolls15, targetMonth, 15)} style={{
-                  width:'100%', background:'#1a2a3a', border:'1px solid #2d4a6a', color:'#6090c0',
+            <>
+              {/* 마스터클래스 */}
+              <div style={{ background:'#141416', borderRadius:12, border:'1px solid #222', padding:'14px', marginBottom:12 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                  <span style={{ fontSize:13, fontWeight:800, color:'#8878e8' }}>마스터클래스 (세후 기준)</span>
+                  <button onClick={addMC} style={{ background:'#1e1e2a', border:'1px solid #3a3a5a', color:'#8878e8', borderRadius:7, padding:'4px 10px', fontSize:11, cursor:'pointer' }}>+ 추가</button>
+                </div>
+                {masterClasses.length === 0 && (
+                  <div style={{ fontSize:12, color:'#555', textAlign:'center', padding:'8px 0' }}>마스터클래스가 없어요</div>
+                )}
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {masterClasses.map(mc => {
+                    const gross = Math.ceil(mc.net / 0.967)
+                    return (
+                      <div key={mc.id} style={{ display:'grid', gridTemplateColumns:'1fr auto auto auto', gap:6, alignItems:'center' }}>
+                        <input value={mc.name} onChange={e => updateMC(mc.id, 'name', e.target.value)} placeholder="강사명 / 행사명"
+                          style={{ background:'#0e0e10', border:'1px solid #2a2a2e', color:'#e8e4d8', borderRadius:6, padding:'6px 8px', fontSize:12 }} />
+                        <input type="number" min={0} value={mc.net || ''} onChange={e => updateMC(mc.id, 'net', +e.target.value || 0)} placeholder="세후금액"
+                          style={{ background:'#0e0e10', border:'1px solid #2a2a2e', color:'#e8e4d8', borderRadius:6, padding:'6px 8px', fontSize:12, width:90 }} />
+                        <span style={{ fontSize:11, color:'#666', whiteSpace:'nowrap' }}>세전 {gross.toLocaleString()}</span>
+                        <button onClick={() => removeMC(mc.id)} style={{ background:'none', border:'none', color:'#666', fontSize:16, cursor:'pointer', lineHeight:1, padding:'0 4px' }}>×</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <button onClick={() => downloadExcel(payrolls15, payrolls25, extras, masterClasses, targetMonth)} style={{
+                  width:'100%', background:'#1a3a1a', border:'1px solid #2d6a2d', color:'#60b080',
                   borderRadius:9, padding:'12px', fontSize:13, fontWeight:700, cursor:'pointer',
-                }}>은행이체 엑셀 — 15일</button>
-              )}
-              {payrolls25.length > 0 && (
-                <button onClick={() => downloadBankExcel(payrolls25, targetMonth, 25)} style={{
-                  width:'100%', background:'#1a2a3a', border:'1px solid #2d4a6a', color:'#6090c0',
-                  borderRadius:9, padding:'12px', fontSize:13, fontWeight:700, cursor:'pointer',
-                }}>은행이체 엑셀 — 25일</button>
-              )}
-            </div>
+                }}>엑셀 다운로드 (세무서용)</button>
+                {payrolls15.length > 0 && (
+                  <button onClick={() => downloadBankExcel(payrolls15, extras, targetMonth, 15)} style={{
+                    width:'100%', background:'#1a2a3a', border:'1px solid #2d4a6a', color:'#6090c0',
+                    borderRadius:9, padding:'12px', fontSize:13, fontWeight:700, cursor:'pointer',
+                  }}>은행이체 엑셀 — 15일</button>
+                )}
+                {payrolls25.length > 0 && (
+                  <button onClick={() => downloadBankExcel(payrolls25, extras, targetMonth, 25)} style={{
+                    width:'100%', background:'#1a2a3a', border:'1px solid #2d4a6a', color:'#6090c0',
+                    borderRadius:9, padding:'12px', fontSize:13, fontWeight:700, cursor:'pointer',
+                  }}>은행이체 엑셀 — 25일</button>
+                )}
+              </div>
+            </>
           )}
         </>
       )}
@@ -1148,7 +1270,7 @@ function InstructorsManage() {
   const [loading, setLoading]         = useState(true)
   const [showForm, setShowForm]       = useState(false)
   const [editing, setEditing]         = useState<Instructor | null>(null)
-  const [form, setForm]               = useState({ name:'', phone:'', email:'', grade:'B' as Grade, pay_day: 15 as 15 | 25 })
+  const [form, setForm]               = useState({ name:'', phone:'', email:'', grade:'B' as Grade, pay_day: 15 as 15 | 25, resident_number:'', bank_code:'', account_number:'' })
   const [saving, setSaving]           = useState(false)
 
   const load = useCallback(async () => {

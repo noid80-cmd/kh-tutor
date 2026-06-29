@@ -71,14 +71,16 @@ CREATE TABLE IF NOT EXISTS evaluations (
   student_id    uuid REFERENCES students(id),
   attended      boolean,
   group_id      uuid REFERENCES group_classes(id),
+  group_name    text,
   content       text NOT NULL DEFAULT '',
   next_goal     text,
   status        text NOT NULL DEFAULT 'submitted' CHECK (status IN ('submitted', 'approved')),
   approved_at   timestamptz,
   created_at    timestamptz DEFAULT now(),
   CHECK (
-    (student_id IS NOT NULL AND group_id IS NULL) OR
-    (group_id IS NOT NULL AND student_id IS NULL)
+    (student_id IS NOT NULL AND group_id IS NULL AND group_name IS NULL) OR
+    (group_id IS NOT NULL AND student_id IS NULL AND group_name IS NULL) OR
+    (group_name IS NOT NULL AND student_id IS NULL AND group_id IS NULL)
   )
 );
 

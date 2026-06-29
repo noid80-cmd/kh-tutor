@@ -70,6 +70,7 @@ export interface Evaluation {
   student_id: string | null
   attended: boolean | null
   group_id: string | null
+  group_name: string | null
   content: string
   next_goal: string | null
   status: EvalStatus

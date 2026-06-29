@@ -13,6 +13,12 @@ const LESSON_TYPES: LessonType[] = ['전공', '부전공', '전문반', '취미'
 const DAYS = ['일', '월', '화', '수', '목', '금', '토']
 const GRADE_COLOR: Record<Grade, string> = { S: '#c0a060', A: '#7090e0', B: '#60b080', C: '#a0a0a0' }
 
+const GROUP_CLASS_CATEGORIES: Record<string, string[]> = {
+  '이론': ['음악통론', '재즈화성학', '전통화성학', '리듬트레이닝', '시창청음', '코드청음', '음향이론'],
+  '앙상블': ['베이직앙상블', '팝앙상블', '연주앙상블', '재즈앙상블'],
+  '실습': ['액팅', '보컬카피클래스', '건반코드초견', '기타코드초견', '송라이팅', '드럼루디먼트', '음향실습'],
+}
+
 function fmt만원(n: number) {
   return n.toLocaleString('ko-KR') + '원'
 }
@@ -423,10 +429,9 @@ function TodayView({ instructor }: { instructor: Instructor }) {
 
 function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string; onClose: () => void; onDone: () => void }) {
   const [assignments, setAssignments] = useState<{ studentId:string; studentName:string; lessonType:LessonType }[]>([])
-  const [groups, setGroups] = useState<GroupClass[]>([])
   const [kind, setKind] = useState<'individual' | 'group'>('individual')
   const [studentId, setStudentId] = useState('')
-  const [groupId, setGroupId] = useState('')
+  const [groupName, setGroupName] = useState('')
   const [lessonType, setLessonType] = useState<LessonType>('전공')
   const [attended, setAttended] = useState(true)
   const [content, setContent] = useState('')
@@ -435,23 +440,18 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  // 학생 목록 (중복 제거)
   const uniqueStudents = assignments.reduce<{ id:string; name:string }[]>((acc, a) => {
     if (!acc.find(s => s.id === a.studentId)) acc.push({ id:a.studentId, name:a.studentName })
     return acc
   }, [])
 
-  // 선택된 학생의 수업 종류 목록
   const availableLessonTypes = assignments.filter(a => a.studentId === studentId).map(a => a.lessonType)
 
   useEffect(() => {
-    Promise.all([
-      supabase.from('assignments').select('student:students(id,name), lesson_type').eq('instructor_id', instructorId).eq('is_active', true),
-      supabase.from('group_classes').select('*').eq('instructor_id', instructorId).eq('is_active', true),
-    ]).then(([asRes, gcRes]) => {
-      setAssignments((asRes.data ?? []).map((d: any) => ({ studentId:d.student.id, studentName:d.student.name, lessonType:d.lesson_type })))
-      setGroups(gcRes.data ?? [])
-    })
+    supabase.from('assignments').select('student:students(id,name), lesson_type').eq('instructor_id', instructorId).eq('is_active', true)
+      .then(({ data }) => {
+        setAssignments((data ?? []).map((d: any) => ({ studentId:d.student.id, studentName:d.student.name, lessonType:d.lesson_type })))
+      })
   }, [instructorId])
 
   useEffect(() => {
@@ -464,14 +464,14 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
 
   async function submit() {
     if (kind === 'individual' && !studentId) { setError('학생을 선택해주세요'); return }
-    if (kind === 'group' && !groupId) { setError('단체수업을 선택해주세요'); return }
+    if (kind === 'group' && !groupName) { setError('수업을 선택해주세요'); return }
     if (!content.trim()) { setError('수업 내용을 입력해주세요'); return }
     setSubmitting(true); setError('')
     const { error: err } = await supabase.from('evaluations').insert({
       instructor_id: instructorId, date, lesson_type: kind === 'group' ? '단체' : lessonType,
       student_id: kind === 'individual' ? studentId : null, attended: kind === 'individual' ? attended : null,
-      group_id: kind === 'group' ? groupId : null, content: content.trim(),
-      next_goal: nextGoal.trim() || null, status: 'submitted',
+      group_id: null, group_name: kind === 'group' ? groupName : null,
+      content: content.trim(), next_goal: nextGoal.trim() || null, status: 'submitted',
     })
     if (err) { setError('저장 실패: ' + err.message); setSubmitting(false); return }
     onDone()
@@ -536,10 +536,14 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
             </>
           )}
           {kind === 'group' && (
-            <FormField label="단체수업 *">
-              <select value={groupId} onChange={e => setGroupId(e.target.value)} style={selectStyle}>
+            <FormField label="수업 *">
+              <select value={groupName} onChange={e => setGroupName(e.target.value)} style={selectStyle}>
                 <option value="">선택하세요</option>
-                {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                {Object.entries(GROUP_CLASS_CATEGORIES).map(([cat, classes]) => (
+                  <optgroup key={cat} label={cat}>
+                    {classes.map(c => <option key={c} value={c}>{c}</option>)}
+                  </optgroup>
+                ))}
               </select>
             </FormField>
           )}
@@ -589,7 +593,7 @@ function EvalsView({ instructor }: { instructor: Instructor }) {
           <div key={ev.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <span style={{ fontSize:14, fontWeight:700 }}>{(ev.student as any)?.name ?? (ev.group as any)?.name}</span>
+                <span style={{ fontSize:14, fontWeight:700 }}>{(ev.student as any)?.name ?? ev.group_name ?? (ev.group as any)?.name}</span>
                 <span style={{ fontSize:10, color:'#888', background:'#1e1e20', padding:'2px 6px', borderRadius:4 }}>{ev.lesson_type}</span>
               </div>
               <StatusBadge status={ev.status} />
@@ -719,7 +723,7 @@ function ApproveView() {
                 <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                   {ev.instructor && <Badge grade={ev.instructor.grade as Grade} />}
                   <span style={{ fontSize:14, fontWeight:700 }}>{ev.instructor?.name}</span>
-                  <span style={{ fontSize:12, color:'#888' }}>→ {ev.student?.name ?? ev.group?.name}</span>
+                  <span style={{ fontSize:12, color:'#888' }}>→ {ev.student?.name ?? ev.group_name ?? ev.group?.name}</span>
                 </div>
                 {ev.status === 'approved' ? (
                   <StatusBadge status="approved" />

@@ -934,6 +934,34 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
   )
 }
 
+function downloadExcel(payrolls15: InstructorPayroll[], payrolls25: InstructorPayroll[], targetMonth: Date) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const XLSX = require('xlsx')
+  const month = targetMonth.getMonth() + 1
+  const year = targetMonth.getFullYear()
+  const rows: (string | number)[][] = []
+
+  rows.push([`${month}월 세무서(${year})`])
+  rows.push(['강사', '세전', '세후', '주민번호'])
+
+  for (const p of payrolls15) {
+    rows.push([p.instructor.name, p.total_before, p.total_after, p.instructor.resident_number ?? ''])
+  }
+  rows.push(['합', payrolls15.reduce((s,p) => s+p.total_before, 0), payrolls15.reduce((s,p) => s+p.total_after, 0), ''])
+  rows.push([])
+
+  for (const p of payrolls25) {
+    rows.push([p.instructor.name, p.total_before, p.total_after, p.instructor.resident_number ?? ''])
+  }
+  rows.push(['합', payrolls25.reduce((s,p) => s+p.total_before, 0), payrolls25.reduce((s,p) => s+p.total_after, 0), ''])
+
+  const ws = XLSX.utils.aoa_to_sheet(rows)
+  ws['!cols'] = [{ wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 18 }]
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, '급여')
+  XLSX.writeFile(wb, `${year}년_${month}월_세무서.xlsx`)
+}
+
 function PayrollView({ userEmail }: { userEmail: string }) {
   const [monthOffset, setMonthOffset] = useState(0)
   const [payrolls15, setPayrolls15] = useState<InstructorPayroll[]>([])
@@ -1029,6 +1057,12 @@ function PayrollView({ userEmail }: { userEmail: string }) {
           {payrolls15.length === 0 && payrolls25.length === 0 && (
             <div style={{ textAlign:'center', color:'#555', padding:'30px 0', fontSize:13 }}>해당 기간에 승인된 수업이 없어요</div>
           )}
+          {(payrolls15.length > 0 || payrolls25.length > 0) && (
+            <button onClick={() => downloadExcel(payrolls15, payrolls25, targetMonth)} style={{
+              width:'100%', background:'#1a3a1a', border:'1px solid #2d6a2d', color:'#60b080',
+              borderRadius:9, padding:'12px', fontSize:13, fontWeight:700, cursor:'pointer', marginTop:8,
+            }}>엑셀 다운로드 (세무서용)</button>
+          )}
         </>
       )}
       {!calculated && (
@@ -1093,8 +1127,8 @@ function InstructorsManage() {
 
   useEffect(() => { load() }, [load])
 
-  function openNew() { setEditing(null); setForm({ name:'', phone:'', email:'', grade:'B', pay_day:15 }); setShowForm(true) }
-  function openEdit(i: Instructor) { setEditing(i); setForm({ name:i.name, phone:i.phone, email:i.email??'', grade:i.grade, pay_day:i.pay_day??15 }); setShowForm(true) }
+  function openNew() { setEditing(null); setForm({ name:'', phone:'', email:'', grade:'B', pay_day:15, resident_number:'' }); setShowForm(true) }
+  function openEdit(i: Instructor) { setEditing(i); setForm({ name:i.name, phone:i.phone, email:i.email??'', grade:i.grade, pay_day:i.pay_day??15, resident_number:i.resident_number??'' }); setShowForm(true) }
 
   async function save() {
     if (!form.name.trim()) return
@@ -1102,9 +1136,9 @@ function InstructorsManage() {
     if (!form.email.trim()) { alert('이메일을 입력해주세요'); return }
     setSaving(true)
     if (editing) {
-      await supabase.from('instructors').update({ name:form.name, phone:form.phone, email:form.email, grade:form.grade, pay_day:form.pay_day }).eq('id', editing.id)
+      await supabase.from('instructors').update({ name:form.name, phone:form.phone, email:form.email, grade:form.grade, pay_day:form.pay_day, resident_number:form.resident_number||null }).eq('id', editing.id)
     } else {
-      await supabase.from('instructors').insert({ name:form.name, phone:form.phone, email:form.email, grade:form.grade, pay_day:form.pay_day })
+      await supabase.from('instructors').insert({ name:form.name, phone:form.phone, email:form.email, grade:form.grade, pay_day:form.pay_day, resident_number:form.resident_number||null })
       const { data: { user } } = await supabase.auth.getUser()
       await fetch('/api/create-instructor', {
         method: 'POST',
@@ -1184,6 +1218,7 @@ function InstructorsManage() {
               ))}
             </div>
           </FormField>
+          <FormField label="주민번호"><input value={form.resident_number??''} onChange={e => setForm(f=>({...f,resident_number:e.target.value}))} style={inputStyle} placeholder="000000-0000000" /></FormField>
           <FormField label="코드">
             <div style={{ display:'flex', gap:6 }}>
               {GRADES.map(g => (

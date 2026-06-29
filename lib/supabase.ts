@@ -19,6 +19,7 @@ export interface Instructor {
   email: string | null
   grade: Grade
   pay_day: 15 | 25
+  resident_number: string | null
   is_active: boolean
   created_at: string
 }

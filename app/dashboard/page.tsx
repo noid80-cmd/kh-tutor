@@ -906,7 +906,7 @@ interface InstructorPayroll {
   total_after: number
 }
 
-function printPayslip(p: InstructorPayroll, range: { start: string; end: string; payLabel: string }, ex: { parking: number; bonus: number }) {
+function printPayslip(p: InstructorPayroll, range: { start: string; end: string; payLabel: string }, ex: InstructorExtra) {
   const w = window.open('', '_blank')
   if (!w) return
   const eff_before = p.total_before + ex.bonus
@@ -920,7 +920,7 @@ function printPayslip(p: InstructorPayroll, range: { start: string; end: string;
       <td style="text-align:right">${l.subtotal.toLocaleString()}원</td>
     </tr>`).join('')
   const extraRows = [
-    ex.bonus   > 0 ? `<tr><td>추가수당(세전)</td><td style="text-align:center">-</td><td style="text-align:right">-</td><td style="text-align:right">${ex.bonus.toLocaleString()}원</td></tr>` : '',
+    ex.bonus   > 0 ? `<tr><td>추가수당${ex.bonusNote ? ` (${ex.bonusNote})` : ''}(세전)</td><td style="text-align:center">-</td><td style="text-align:right">-</td><td style="text-align:right">${ex.bonus.toLocaleString()}원</td></tr>` : '',
     ex.parking > 0 ? `<tr><td>주차료(세금없음)</td><td style="text-align:center">-</td><td style="text-align:right">-</td><td style="text-align:right">${ex.parking.toLocaleString()}원</td></tr>` : '',
   ].join('')
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>강의료 명세서</title>
@@ -962,7 +962,7 @@ function printPayslip(p: InstructorPayroll, range: { start: string; end: string;
   w.document.close()
 }
 
-function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEmail, extras, setExtra }: {
+function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEmail, extras, setExtra, setBonusNote }: {
   title: string
   payrolls: InstructorPayroll[]
   range: { start: string; end: string; payLabel: string }
@@ -971,13 +971,14 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
   userEmail: string
   extras: Record<string, InstructorExtra>
   setExtra: (id: string, field: 'parking' | 'bonus', val: number) => void
+  setBonusNote: (id: string, val: string) => void
 }) {
   const [emailingIds, setEmailingIds] = useState<Set<string>>(new Set())
   const [emailedIds, setEmailedIds]   = useState<Set<string>>(new Set())
 
   async function sendEmail(p: InstructorPayroll) {
     if (!p.instructor.email) { alert('강사 이메일이 등록되지 않았어요'); return }
-    const ex = extras[p.instructor.id] ?? { parking:0, bonus:0 }
+    const ex = extras[p.instructor.id] ?? { parking:0, bonus:0, bonusNote:'' }
     const { total_before, tax, total_after } = getEffective(p, ex)
     setEmailingIds(prev => new Set(prev).add(p.instructor.id))
     const res = await fetch('/api/send-payslip', {
@@ -1028,7 +1029,7 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
         {payrolls.map(p => {
-          const ex = extras[p.instructor.id] ?? { parking:0, bonus:0 }
+          const ex = extras[p.instructor.id] ?? { parking:0, bonus:0, bonusNote:'' }
           const { total_before: eff_before, tax: eff_tax, total_after: eff_after } = getEffective(p, ex)
           return (
             <div key={p.instructor.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', overflow:'hidden' }}>
@@ -1084,13 +1085,22 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
                           style={extraInputStyle} />
                       </div>
                       <div>
-                        <label style={{ fontSize:10, color:'#666', display:'block', marginBottom:3 }}>추가수당 세전 (특강/채점)</label>
+                        <label style={{ fontSize:10, color:'#666', display:'block', marginBottom:3 }}>추가수당 세전</label>
                         <input type="number" min={0} value={ex.bonus || ''} placeholder="0"
                           onClick={e => e.stopPropagation()}
                           onChange={e => setExtra(p.instructor.id, 'bonus', +e.target.value || 0)}
                           style={extraInputStyle} />
                       </div>
                     </div>
+                    {ex.bonus > 0 && (
+                      <div style={{ marginBottom:10 }}>
+                        <label style={{ fontSize:10, color:'#666', display:'block', marginBottom:3 }}>추가수당 내용 (예: 모의고사채점료, 릴레이특강)</label>
+                        <input type="text" value={ex.bonusNote || ''} placeholder="내용 입력"
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setBonusNote(p.instructor.id, e.target.value)}
+                          style={extraInputStyle} />
+                      </div>
+                    )}
                   </div>
                   <div style={{ borderTop:'1px solid #222', marginTop:2, paddingTop:8 }}>
                     <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#888', marginBottom:3 }}>
@@ -1118,7 +1128,7 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
   )
 }
 
-interface InstructorExtra { parking: number; bonus: number }
+interface InstructorExtra { parking: number; bonus: number; bonusNote: string }
 interface MasterClass { id: string; name: string; net: number }
 
 function getEffective(p: InstructorPayroll, ex: InstructorExtra) {
@@ -1160,7 +1170,7 @@ function downloadExcel(
   rows.push(['강사', '세전', '세후', '주민번호'])
 
   for (const p of payrolls15) {
-    const { total_before, total_after } = getEffective(p, extras[p.instructor.id] ?? { parking:0, bonus:0 })
+    const { total_before, total_after } = getEffective(p, extras[p.instructor.id] ?? { parking:0, bonus:0, bonusNote:'' })
     rows.push([p.instructor.name, total_before, total_after, p.instructor.resident_number ?? ''])
   }
   const sum15b = payrolls15.reduce((s,p) => s + getEffective(p, extras[p.instructor.id] ?? {parking:0,bonus:0}).total_before, 0)
@@ -1169,7 +1179,7 @@ function downloadExcel(
   rows.push([])
 
   for (const p of payrolls25) {
-    const { total_before, total_after } = getEffective(p, extras[p.instructor.id] ?? { parking:0, bonus:0 })
+    const { total_before, total_after } = getEffective(p, extras[p.instructor.id] ?? { parking:0, bonus:0, bonusNote:'' })
     rows.push([p.instructor.name, total_before, total_after, p.instructor.resident_number ?? ''])
   }
   const sum25b = payrolls25.reduce((s,p) => s + getEffective(p, extras[p.instructor.id] ?? {parking:0,bonus:0}).total_before, 0)
@@ -1206,7 +1216,10 @@ function PayrollView({ userEmail }: { userEmail: string }) {
   const [masterClasses, setMasterClasses] = useState<MasterClass[]>([])
 
   function setExtra(id: string, field: 'parking' | 'bonus', val: number) {
-    setExtras(prev => ({ ...prev, [id]: { ...(prev[id] ?? { parking:0, bonus:0 }), [field]: val } }))
+    setExtras(prev => ({ ...prev, [id]: { ...(prev[id] ?? { parking:0, bonus:0, bonusNote:'' }), [field]: val } }))
+  }
+  function setBonusNote(id: string, val: string) {
+    setExtras(prev => ({ ...prev, [id]: { ...(prev[id] ?? { parking:0, bonus:0, bonusNote:'' }), bonusNote: val } }))
   }
   function addMC() {
     setMasterClasses(prev => [...prev, { id: crypto.randomUUID(), name:'', net:0 }])
@@ -1300,8 +1313,8 @@ function PayrollView({ userEmail }: { userEmail: string }) {
 
       {calculated && (
         <>
-          <PayrollSection title="15일 지급" payrolls={payrolls15} range={range15} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} extras={extras} setExtra={setExtra} />
-          <PayrollSection title="25일 지급" payrolls={payrolls25} range={range25} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} extras={extras} setExtra={setExtra} />
+          <PayrollSection title="15일 지급" payrolls={payrolls15} range={range15} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} extras={extras} setExtra={setExtra} setBonusNote={setBonusNote} />
+          <PayrollSection title="25일 지급" payrolls={payrolls25} range={range25} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} extras={extras} setExtra={setExtra} setBonusNote={setBonusNote} />
           {payrolls15.length === 0 && payrolls25.length === 0 && (
             <div style={{ textAlign:'center', color:'#555', padding:'30px 0', fontSize:13 }}>해당 기간에 승인된 수업이 없어요</div>
           )}

@@ -4,7 +4,7 @@ import { Resend } from 'resend'
 const ADMIN_EMAIL = 'noid80@hanmail.net'
 
 export async function POST(req: NextRequest) {
-  const { instructor, lines, total_before, tax, total_after, range, callerEmail } = await req.json()
+  const { instructor, lines, total_before, tax, total_after, extras, range, callerEmail } = await req.json()
 
   if (callerEmail !== ADMIN_EMAIL) {
     return NextResponse.json({ error: '권한이 없어요' }, { status: 403 })
@@ -13,6 +13,12 @@ export async function POST(req: NextRequest) {
   if (!instructor?.email) {
     return NextResponse.json({ error: '강사 이메일이 없어요' }, { status: 400 })
   }
+
+  const ex = extras ?? { parking: 0, bonus: 0, bonusNote: '' }
+  const extraRows = [
+    ex.bonus > 0 ? `<tr><td style="padding:10px 12px;border-bottom:1px solid #eee">추가수당${ex.bonusNote ? ` (${ex.bonusNote})` : ''}</td><td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:center">-</td><td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:right">세전</td><td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${ex.bonus.toLocaleString('ko-KR')}원</td></tr>` : '',
+    ex.parking > 0 ? `<tr><td style="padding:10px 12px;border-bottom:1px solid #eee">주차료 (세금없음)</td><td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:center">-</td><td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:right">세후</td><td style="padding:10px 12px;border-bottom:1px solid #eee;text-align:right;font-weight:600">${ex.parking.toLocaleString('ko-KR')}원</td></tr>` : '',
+  ].join('')
 
   const rows = lines.map((l: { lesson_type: string; count: number; rate: number; subtotal: number }) => `
     <tr>
@@ -53,7 +59,7 @@ export async function POST(req: NextRequest) {
           <th style="padding:10px 12px;font-size:12px;font-weight:700;text-align:right;border-bottom:2px solid #e8e4d8">금액</th>
         </tr>
       </thead>
-      <tbody>${rows}</tbody>
+      <tbody>${rows}${extraRows}</tbody>
     </table>
 
     <div style="background:#f8f8f6;border-radius:12px;padding:18px 20px">

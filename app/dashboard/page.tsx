@@ -962,12 +962,18 @@ function InstructorsManage() {
   async function save() {
     if (!form.name.trim()) return
     if (!form.phone.trim()) return
-    if (!form.email.trim()) { alert('이메일을 입력해주세요 (Google 로그인에 사용됩니다)'); return }
+    if (!form.email.trim()) { alert('이메일을 입력해주세요'); return }
     setSaving(true)
     if (editing) {
       await supabase.from('instructors').update({ name:form.name, phone:form.phone, email:form.email, grade:form.grade }).eq('id', editing.id)
     } else {
       await supabase.from('instructors').insert({ name:form.name, phone:form.phone, email:form.email, grade:form.grade })
+      const { data: { user } } = await supabase.auth.getUser()
+      await fetch('/api/create-instructor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: form.email, callerEmail: user?.email }),
+      })
     }
     await load(); setSaving(false); setShowForm(false)
   }
@@ -981,6 +987,19 @@ function InstructorsManage() {
     if (!confirm(`${i.name} 강사를 삭제할까요?`)) return
     await supabase.from('instructors').delete().eq('id', i.id)
     await load()
+  }
+
+  async function resetPassword(i: Instructor) {
+    if (!i.email) { alert('이메일이 없어요'); return }
+    const { data: { user } } = await supabase.auth.getUser()
+    const res = await fetch('/api/create-instructor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: i.email, callerEmail: user?.email }),
+    })
+    const json = await res.json()
+    if (json.ok) alert(`${i.name} 강사님 계정 비밀번호가 kh1234로 설정됐어요`)
+    else alert('실패: ' + json.error)
   }
 
   if (loading) return <Spinner />
@@ -1002,6 +1021,7 @@ function InstructorsManage() {
             </div>
             <div style={{ display:'flex', gap:7 }}>
               <button onClick={() => openEdit(i)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>수정</button>
+              <button onClick={() => resetPassword(i)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#7090e0', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>비번</button>
               <button onClick={() => toggleActive(i)} style={{ background:'#1e1e22', border:'1px solid #333', color: i.is_active ? '#e07060' : '#60b080', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>
                 {i.is_active ? '비활성' : '활성'}
               </button>

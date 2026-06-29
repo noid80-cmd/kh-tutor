@@ -457,7 +457,7 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
   useEffect(() => {
     if (kind === 'individual' && studentId) {
       const types = assignments.filter(a => a.studentId === studentId).map(a => a.lessonType)
-      if (types.length === 1) setLessonType(types[0])
+      if (types.length >= 1) setLessonType(types[0])
     }
     if (kind === 'group') setLessonType('단체')
   }, [kind, studentId, assignments])
@@ -502,7 +502,7 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
           {kind === 'individual' && (
             <>
               <FormField label="학생 *">
-                <select value={studentId} onChange={e => { setStudentId(e.target.value); setLessonType('전공') }} style={selectStyle}>
+                <select value={studentId} onChange={e => setStudentId(e.target.value)} style={selectStyle}>
                   <option value="">선택하세요</option>
                   {uniqueStudents.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>

@@ -18,6 +18,7 @@ export interface Instructor {
   phone: string
   email: string | null
   grade: Grade
+  pay_day: 15 | 25
   is_active: boolean
   created_at: string
 }

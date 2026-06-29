@@ -23,13 +23,23 @@ function fmt만원(n: number) {
   return n.toLocaleString('ko-KR') + '원'
 }
 
-function getDefaultPayrollRange() {
+function getPayrollRange(payDay: 15 | 25, offset = 0) {
   const now = new Date()
   const y = now.getFullYear()
-  const m = now.getMonth()
-  const start = new Date(y, m - 1, 11).toISOString().split('T')[0]
-  const end   = new Date(y, m, 10).toISOString().split('T')[0]
-  return { start, end }
+  const m = now.getMonth() + offset
+  if (payDay === 15) {
+    return {
+      start:    new Date(y, m - 1, 11).toISOString().split('T')[0],
+      end:      new Date(y, m,     10).toISOString().split('T')[0],
+      payLabel: `${new Date(y, m, 1).getMonth() + 1}월 15일 지급`,
+    }
+  } else {
+    return {
+      start:    new Date(y, m - 1, 21).toISOString().split('T')[0],
+      end:      new Date(y, m,     20).toISOString().split('T')[0],
+      payLabel: `${new Date(y, m, 1).getMonth() + 1}월 25일 지급`,
+    }
+  }
 }
 
 function todayStr() {
@@ -760,36 +770,164 @@ interface InstructorPayroll {
   total_after: number
 }
 
+function printPayslip(p: InstructorPayroll, range: { start: string; end: string; payLabel: string }) {
+  const w = window.open('', '_blank')
+  if (!w) return
+  const rows = p.lines.map(l => `
+    <tr>
+      <td>${l.lesson_type}</td>
+      <td style="text-align:center">${l.count}회</td>
+      <td style="text-align:right">${l.rate.toLocaleString()}원</td>
+      <td style="text-align:right">${l.subtotal.toLocaleString()}원</td>
+    </tr>`).join('')
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>강의료 명세서</title>
+  <style>
+    body { font-family: 'Apple SD Gothic Neo', sans-serif; max-width: 480px; margin: 40px auto; color: #111; font-size: 14px; }
+    h2 { font-size: 20px; font-weight: 900; margin-bottom: 4px; }
+    .sub { color: #888; font-size: 12px; margin-bottom: 24px; }
+    .info { background: #f8f8f6; border-radius: 8px; padding: 14px 16px; margin-bottom: 20px; }
+    .info p { margin: 4px 0; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    th { background: #f0ece0; font-size: 12px; padding: 8px 10px; text-align: left; }
+    td { padding: 8px 10px; border-bottom: 1px solid #eee; font-size: 13px; }
+    .total { margin-top: 16px; padding: 14px 16px; background: #f8f8f6; border-radius: 8px; }
+    .total-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
+    .total-row.final { font-size: 16px; font-weight: 900; padding-top: 10px; margin-top: 6px; border-top: 2px solid #111; }
+    .tax { color: #c0392b; }
+    @media print { body { margin: 20px; } }
+  </style></head><body>
+  <h2>KH Music & Studio</h2>
+  <div class="sub">강의료 명세서</div>
+  <div class="info">
+    <p><b>강사명</b>: ${p.instructor.name}</p>
+    <p><b>등급</b>: ${p.instructor.grade}</p>
+    <p><b>정산기간</b>: ${range.start} ~ ${range.end}</p>
+    <p><b>지급일</b>: ${range.payLabel}</p>
+  </div>
+  <table>
+    <tr><th>수업 종류</th><th style="text-align:center">횟수</th><th style="text-align:right">단가</th><th style="text-align:right">금액</th></tr>
+    ${rows}
+  </table>
+  <div class="total">
+    <div class="total-row"><span>세전 합계</span><span>${p.total_before.toLocaleString()}원</span></div>
+    <div class="total-row tax"><span>원천징수 (3.3%)</span><span>-${p.tax.toLocaleString()}원</span></div>
+    <div class="total-row final"><span>지급액</span><span>${p.total_after.toLocaleString()}원</span></div>
+  </div>
+  <script>window.onload = () => { window.print() }<\/script>
+  </body></html>`)
+  w.document.close()
+}
+
+function PayrollSection({ title, payrolls, range, expanded, setExpanded }: {
+  title: string
+  payrolls: InstructorPayroll[]
+  range: { start: string; end: string; payLabel: string }
+  expanded: string | null
+  setExpanded: (id: string | null) => void
+}) {
+  if (payrolls.length === 0) return null
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+        <span style={{ fontSize:13, fontWeight:800, color:'#c0a060' }}>{title}</span>
+        <span style={{ fontSize:11, color:'#666' }}>{range.start} ~ {range.end}</span>
+      </div>
+      <div style={{ background:'rgba(192,160,96,0.08)', border:'1px solid rgba(192,160,96,0.2)', borderRadius:10, padding:'10px 14px', marginBottom:10 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#888', marginBottom:2 }}>
+          <span>세전 합계</span><span>{fmt만원(payrolls.reduce((s,p) => s+p.total_before, 0))}</span>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#e07060', marginBottom:2 }}>
+          <span>원천징수(3.3%)</span><span>-{fmt만원(payrolls.reduce((s,p) => s+p.tax, 0))}</span>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:800, color:'#c0a060' }}>
+          <span>지급 합계</span><span>{fmt만원(payrolls.reduce((s,p) => s+p.total_after, 0))}</span>
+        </div>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {payrolls.map(p => (
+          <div key={p.instructor.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', overflow:'hidden' }}>
+            <div onClick={() => setExpanded(expanded === p.instructor.id ? null : p.instructor.id)}
+              style={{ padding:'12px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <Badge grade={p.instructor.grade} />
+                <span style={{ fontSize:14, fontWeight:700 }}>{p.instructor.name}</span>
+                <span style={{ fontSize:11, color:'#666' }}>{p.lines.reduce((s,l) => s+l.count, 0)}회</span>
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ textAlign:'right' }}>
+                  <div style={{ fontSize:14, fontWeight:800, color:'#c0a060' }}>{fmt만원(p.total_after)}</div>
+                  <div style={{ fontSize:10, color:'#666' }}>세후</div>
+                </div>
+                <button onClick={e => { e.stopPropagation(); printPayslip(p, range) }} style={{
+                  background:'#1e1e22', border:'1px solid #333', color:'#aaa',
+                  borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer', whiteSpace:'nowrap',
+                }}>명세서</button>
+              </div>
+            </div>
+            {expanded === p.instructor.id && (
+              <div style={{ borderTop:'1px solid #222', padding:'12px 14px', background:'#111113' }}>
+                {p.lines.map(l => (
+                  <div key={l.lesson_type} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'4px 0' }}>
+                    <span style={{ fontSize:12, color:'#aaa', width:50 }}>{l.lesson_type}</span>
+                    <span style={{ fontSize:12, color:'#888' }}>{l.count}회 × {fmt만원(l.rate)}</span>
+                    <span style={{ fontSize:12, fontWeight:600 }}>{fmt만원(l.subtotal)}</span>
+                  </div>
+                ))}
+                <div style={{ borderTop:'1px solid #222', marginTop:8, paddingTop:8 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#888', marginBottom:3 }}>
+                    <span>세전</span><span>{fmt만원(p.total_before)}</span>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#e07060', marginBottom:3 }}>
+                    <span>원천징수(3.3%)</span><span>-{fmt만원(p.tax)}</span>
+                  </div>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:14, fontWeight:800, color:'#c0a060', marginTop:6 }}>
+                    <span>지급액(세후)</span><span>{fmt만원(p.total_after)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function PayrollView() {
-  const range = getDefaultPayrollRange()
-  const [startDate, setStartDate] = useState(range.start)
-  const [endDate, setEndDate]     = useState(range.end)
-  const [payrolls, setPayrolls]   = useState<InstructorPayroll[]>([])
-  const [loading, setLoading]     = useState(false)
-  const [expanded, setExpanded]   = useState<string | null>(null)
+  const [monthOffset, setMonthOffset] = useState(0)
+  const [payrolls15, setPayrolls15] = useState<InstructorPayroll[]>([])
+  const [payrolls25, setPayrolls25] = useState<InstructorPayroll[]>([])
+  const [loading, setLoading]       = useState(false)
+  const [expanded, setExpanded]     = useState<string | null>(null)
   const [calculated, setCalculated] = useState(false)
+
+  const range15 = getPayrollRange(15, monthOffset)
+  const range25 = getPayrollRange(25, monthOffset)
 
   async function calculate() {
     setLoading(true)
+    const broadStart = range25.start < range15.start ? range25.start : range15.start
+    const broadEnd   = range25.end   > range15.end   ? range25.end   : range15.end
+
     const [evRes, instrRes, rateRes] = await Promise.all([
-      supabase.from('evaluations').select('*').eq('status','approved').gte('date', startDate).lte('date', endDate),
+      supabase.from('evaluations').select('*').eq('status','approved').gte('date', broadStart).lte('date', broadEnd),
       supabase.from('instructors').select('*').eq('is_active', true),
       supabase.from('grade_rates').select('*'),
     ])
-    const allEvals: Evaluation[]   = evRes.data ?? []
+    const allEvals: Evaluation[]    = evRes.data ?? []
     const instructors: Instructor[] = instrRes.data ?? []
-    const rates: GradeRate[]       = rateRes.data ?? []
+    const rates: GradeRate[]        = rateRes.data ?? []
     const rateMap = new Map<string, number>()
     rates.forEach(r => rateMap.set(`${r.grade}:${r.lesson_type}`, r.rate))
 
-    const result: InstructorPayroll[] = []
-    for (const instr of instructors) {
+    function buildPayroll(instr: Instructor, range: { start: string; end: string }) {
       const myEvals = allEvals.filter(e => {
         if (e.instructor_id !== instr.id) return false
         if (e.student_id && e.attended === false) return false
+        if (e.date < range.start || e.date > range.end) return false
         return true
       })
-      if (myEvals.length === 0) continue
+      if (myEvals.length === 0) return null
       const counts = new Map<LessonType, number>()
       for (const ev of myEvals) counts.set(ev.lesson_type, (counts.get(ev.lesson_type) ?? 0) + 1)
       const lines: PayrollLine[] = []
@@ -800,102 +938,60 @@ function PayrollView() {
       lines.sort((a, b) => LESSON_TYPES.indexOf(a.lesson_type) - LESSON_TYPES.indexOf(b.lesson_type))
       const total_before = lines.reduce((s, l) => s + l.subtotal, 0)
       const tax = Math.round(total_before * 0.033)
-      result.push({ instructor:instr, lines, total_before, tax, total_after:total_before - tax })
+      return { instructor:instr, lines, total_before, tax, total_after:total_before - tax }
     }
-    result.sort((a, b) => b.total_before - a.total_before)
-    setPayrolls(result)
-    setCalculated(true)
-    setLoading(false)
+
+    const r15: InstructorPayroll[] = []
+    const r25: InstructorPayroll[] = []
+    for (const instr of instructors) {
+      const payDay = (instr.pay_day ?? 15) as 15 | 25
+      const p = buildPayroll(instr, payDay === 25 ? range25 : range15)
+      if (!p) continue
+      if (payDay === 25) r25.push(p)
+      else r15.push(p)
+    }
+    r15.sort((a, b) => b.total_before - a.total_before)
+    r25.sort((a, b) => b.total_before - a.total_before)
+    setPayrolls15(r15); setPayrolls25(r25)
+    setCalculated(true); setLoading(false)
   }
+
+  const now = new Date()
+  const targetMonth = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1)
+  const monthLabel = `${targetMonth.getFullYear()}년 ${targetMonth.getMonth() + 1}월`
 
   return (
     <div style={{ padding:'18px 16px' }}>
       <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>급여 정산</div>
       <div style={{ background:'#141416', borderRadius:12, border:'1px solid #222', padding:'14px', marginBottom:16 }}>
-        <div style={{ display:'flex', gap:10, alignItems:'flex-end' }}>
-          <div style={{ flex:1 }}>
-            <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>시작</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle} />
-          </div>
-          <div style={{ flex:1 }}>
-            <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>종료</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputStyle} />
-          </div>
-          <button onClick={calculate} disabled={loading} style={{
-            background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'9px 16px',
-            fontSize:13, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', opacity: loading ? 0.7 : 1,
-          }}>
-            {loading ? '계산중' : '정산'}
-          </button>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+          <button onClick={() => { setMonthOffset(o => o - 1); setCalculated(false) }}
+            style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 12px', cursor:'pointer' }}>‹</button>
+          <span style={{ fontSize:14, fontWeight:700 }}>{monthLabel}</span>
+          <button onClick={() => { setMonthOffset(o => o + 1); setCalculated(false) }}
+            style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 12px', cursor:'pointer' }}>›</button>
         </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:12 }}>
+          <div style={{ fontSize:11, color:'#666' }}>15일 지급: {range15.start} ~ {range15.end}</div>
+          <div style={{ fontSize:11, color:'#666' }}>25일 지급: {range25.start} ~ {range25.end}</div>
+        </div>
+        <button onClick={calculate} disabled={loading} style={{
+          width:'100%', background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'10px',
+          fontSize:13, fontWeight:700, cursor:'pointer', opacity: loading ? 0.7 : 1,
+        }}>{loading ? '계산 중...' : '정산 계산'}</button>
       </div>
 
-      {payrolls.length > 0 && (
+      {calculated && (
         <>
-          <div style={{ background:'rgba(192,160,96,0.1)', border:'1px solid rgba(192,160,96,0.3)', borderRadius:10, padding:'12px 14px', marginBottom:14 }}>
-            <div style={{ fontSize:11, color:'#c0a060', fontWeight:700, marginBottom:8 }}>
-              전체 급여 합계 · {startDate} ~ {endDate}
-            </div>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
-              <span style={{ fontSize:12, color:'#888' }}>세전 합계</span>
-              <span style={{ fontSize:13, fontWeight:600 }}>{fmt만원(payrolls.reduce((s,p) => s+p.total_before, 0))}</span>
-            </div>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
-              <span style={{ fontSize:12, color:'#888' }}>원천징수(3.3%)</span>
-              <span style={{ fontSize:13, fontWeight:600, color:'#e07060' }}>-{fmt만원(payrolls.reduce((s,p) => s+p.tax, 0))}</span>
-            </div>
-            <div style={{ display:'flex', justifyContent:'space-between', paddingTop:6, borderTop:'1px solid rgba(192,160,96,0.2)' }}>
-              <span style={{ fontSize:13, fontWeight:700, color:'#c0a060' }}>지급 합계</span>
-              <span style={{ fontSize:15, fontWeight:800, color:'#c0a060' }}>{fmt만원(payrolls.reduce((s,p) => s+p.total_after, 0))}</span>
-            </div>
-          </div>
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {payrolls.map(p => (
-              <div key={p.instructor.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', overflow:'hidden' }}>
-                <div onClick={() => setExpanded(expanded === p.instructor.id ? null : p.instructor.id)}
-                  style={{ padding:'13px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                    <Badge grade={p.instructor.grade} />
-                    <span style={{ fontSize:14, fontWeight:700 }}>{p.instructor.name}</span>
-                    <span style={{ fontSize:11, color:'#666' }}>{p.lines.reduce((s,l) => s+l.count, 0)}회</span>
-                  </div>
-                  <div style={{ textAlign:'right' }}>
-                    <div style={{ fontSize:14, fontWeight:800, color:'#c0a060' }}>{fmt만원(p.total_after)}</div>
-                    <div style={{ fontSize:10, color:'#666' }}>세후</div>
-                  </div>
-                </div>
-                {expanded === p.instructor.id && (
-                  <div style={{ borderTop:'1px solid #222', padding:'12px 14px', background:'#111113' }}>
-                    {p.lines.map(l => (
-                      <div key={l.lesson_type} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'4px 0' }}>
-                        <span style={{ fontSize:12, color:'#aaa', width:50 }}>{l.lesson_type}</span>
-                        <span style={{ fontSize:12, color:'#888' }}>{l.count}회 × {fmt만원(l.rate)}</span>
-                        <span style={{ fontSize:12, fontWeight:600 }}>{fmt만원(l.subtotal)}</span>
-                      </div>
-                    ))}
-                    <div style={{ borderTop:'1px solid #222', marginTop:8, paddingTop:8 }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#888', marginBottom:3 }}>
-                        <span>세전</span><span>{fmt만원(p.total_before)}</span>
-                      </div>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#e07060', marginBottom:3 }}>
-                        <span>원천징수(3.3%)</span><span>-{fmt만원(p.tax)}</span>
-                      </div>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:14, fontWeight:800, color:'#c0a060', marginTop:6 }}>
-                        <span>지급액(세후)</span><span>{fmt만원(p.total_after)}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <PayrollSection title="15일 지급" payrolls={payrolls15} range={range15} expanded={expanded} setExpanded={setExpanded} />
+          <PayrollSection title="25일 지급" payrolls={payrolls25} range={range25} expanded={expanded} setExpanded={setExpanded} />
+          {payrolls15.length === 0 && payrolls25.length === 0 && (
+            <div style={{ textAlign:'center', color:'#555', padding:'30px 0', fontSize:13 }}>해당 기간에 승인된 수업이 없어요</div>
+          )}
         </>
       )}
-      {!loading && calculated && payrolls.length === 0 && (
-        <div style={{ textAlign:'center', color:'#555', padding:'30px 0', fontSize:13 }}>해당 기간에 승인된 수업이 없어요</div>
-      )}
-      {!loading && !calculated && (
-        <div style={{ textAlign:'center', color:'#555', padding:'40px 0', fontSize:13 }}>기간을 설정하고 정산 버튼을 눌러주세요</div>
+      {!calculated && (
+        <div style={{ textAlign:'center', color:'#555', padding:'40px 0', fontSize:13 }}>정산 계산 버튼을 눌러주세요</div>
       )}
     </div>
   )
@@ -944,7 +1040,7 @@ function InstructorsManage() {
   const [loading, setLoading]         = useState(true)
   const [showForm, setShowForm]       = useState(false)
   const [editing, setEditing]         = useState<Instructor | null>(null)
-  const [form, setForm]               = useState({ name:'', phone:'', email:'', grade:'B' as Grade })
+  const [form, setForm]               = useState({ name:'', phone:'', email:'', grade:'B' as Grade, pay_day: 15 as 15 | 25 })
   const [saving, setSaving]           = useState(false)
 
   const load = useCallback(async () => {
@@ -956,8 +1052,8 @@ function InstructorsManage() {
 
   useEffect(() => { load() }, [load])
 
-  function openNew() { setEditing(null); setForm({ name:'', phone:'', email:'', grade:'B' }); setShowForm(true) }
-  function openEdit(i: Instructor) { setEditing(i); setForm({ name:i.name, phone:i.phone, email:i.email??'', grade:i.grade }); setShowForm(true) }
+  function openNew() { setEditing(null); setForm({ name:'', phone:'', email:'', grade:'B', pay_day:15 }); setShowForm(true) }
+  function openEdit(i: Instructor) { setEditing(i); setForm({ name:i.name, phone:i.phone, email:i.email??'', grade:i.grade, pay_day:i.pay_day??15 }); setShowForm(true) }
 
   async function save() {
     if (!form.name.trim()) return
@@ -965,9 +1061,9 @@ function InstructorsManage() {
     if (!form.email.trim()) { alert('이메일을 입력해주세요'); return }
     setSaving(true)
     if (editing) {
-      await supabase.from('instructors').update({ name:form.name, phone:form.phone, email:form.email, grade:form.grade }).eq('id', editing.id)
+      await supabase.from('instructors').update({ name:form.name, phone:form.phone, email:form.email, grade:form.grade, pay_day:form.pay_day }).eq('id', editing.id)
     } else {
-      await supabase.from('instructors').insert({ name:form.name, phone:form.phone, email:form.email, grade:form.grade })
+      await supabase.from('instructors').insert({ name:form.name, phone:form.phone, email:form.email, grade:form.grade, pay_day:form.pay_day })
       const { data: { user } } = await supabase.auth.getUser()
       await fetch('/api/create-instructor', {
         method: 'POST',
@@ -1035,6 +1131,18 @@ function InstructorsManage() {
           <FormField label="이름 *"><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="강사명" /></FormField>
           <FormField label="연락처 *"><input value={form.phone} onChange={e => setForm(f=>({...f,phone:e.target.value}))} style={inputStyle} placeholder="010-0000-0000" /></FormField>
           <FormField label="이메일 *"><input value={form.email} onChange={e => setForm(f=>({...f,email:e.target.value}))} style={inputStyle} placeholder="예: hong@gmail.com" /></FormField>
+          <FormField label="지급일">
+            <div style={{ display:'flex', gap:8 }}>
+              {([15, 25] as const).map(d => (
+                <button key={d} onClick={() => setForm(f=>({...f,pay_day:d}))} style={{
+                  flex:1, padding:'9px', borderRadius:8,
+                  border:`1px solid ${form.pay_day===d ? '#c0a060' : '#333'}`,
+                  background: form.pay_day===d ? 'rgba(192,160,96,0.15)' : '#1a1a1c',
+                  color: form.pay_day===d ? '#c0a060' : '#666', fontSize:13, fontWeight:700, cursor:'pointer',
+                }}>{d}일</button>
+              ))}
+            </div>
+          </FormField>
           <FormField label="코드">
             <div style={{ display:'flex', gap:6 }}>
               {GRADES.map(g => (

@@ -8,10 +8,10 @@ import type { Instructor, Student, Assignment, GroupClass, Evaluation, GradeRate
 // ── 상수 ──────────────────────────────────────────────────────
 
 const ADMIN_EMAIL = 'noid80@hanmail.net'
-const GRADES: Grade[] = ['S', 'A', 'B', 'C']
+const GRADES: Grade[] = ['S', 'A+', 'A', 'A-', 'B']
 const LESSON_TYPES: LessonType[] = ['전공', '부전공', '전문반', '취미', '단체']
 const DAYS = ['일', '월', '화', '수', '목', '금', '토']
-const GRADE_COLOR: Record<Grade, string> = { S: '#c0a060', A: '#7090e0', B: '#60b080', C: '#a0a0a0' }
+const GRADE_COLOR: Record<Grade, string> = { S: '#c0a060', 'A+': '#8878e8', A: '#7090e0', 'A-': '#6098d8', B: '#60b080' }
 
 const GROUP_CLASS_CATEGORIES: Record<string, string[]> = {
   '이론': ['음악통론', '재즈화성학', '전통화성학', '리듬트레이닝', '시창청음', '코드청음', '음향이론'],

@@ -7,7 +7,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: { flowType: 'implicit' },
 })
 
-export type Grade = 'S' | 'A' | 'B' | 'C'
+export type Grade = 'S' | 'A+' | 'A' | 'A-' | 'B'
 export type LessonType = '전공' | '부전공' | '전문반' | '취미' | '단체'
 export type EvalStatus = 'submitted' | 'approved'
 

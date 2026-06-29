@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS instructors (
   name       text NOT NULL,
   phone      text NOT NULL,
   email      text,
-  grade      text NOT NULL DEFAULT 'B' CHECK (grade IN ('S', 'A', 'B', 'C')),
+  grade      text NOT NULL DEFAULT 'B' CHECK (grade IN ('S', 'A+', 'A', 'A-', 'B')),
   is_active  boolean NOT NULL DEFAULT true,
   created_at timestamptz DEFAULT now()
 );
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS students (
 -- 등급별 단가표
 CREATE TABLE IF NOT EXISTS grade_rates (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  grade       text NOT NULL CHECK (grade IN ('S', 'A', 'B', 'C')),
+  grade       text NOT NULL CHECK (grade IN ('S', 'A+', 'A', 'A-', 'B')),
   lesson_type text NOT NULL CHECK (lesson_type IN ('전공', '부전공', '전문반', '취미', '단체')),
   rate        integer NOT NULL DEFAULT 0,
   UNIQUE (grade, lesson_type)
@@ -136,8 +136,9 @@ CREATE POLICY "어드민 평가서 관리" ON evaluations FOR ALL    USING (is_a
 -- ── 기본 단가 ─────────────────────────────────────────────────
 
 INSERT INTO grade_rates (grade, lesson_type, rate) VALUES
-  ('S','전공',40000),('S','부전공',35000),('S','전문반',32000),('S','취미',30000),('S','단체',27000),
-  ('A','전공',35000),('A','부전공',30000),('A','전문반',28000),('A','취미',26000),('A','단체',23000),
-  ('B','전공',30000),('B','부전공',27000),('B','전문반',25000),('B','취미',22000),('B','단체',20000),
-  ('C','전공',25000),('C','부전공',22000),('C','전문반',20000),('C','취미',18000),('C','단체',15000)
+  ('S',  '전공', 40000), ('S',  '부전공', 27500), ('S',  '전문반', 27500), ('S',  '취미', 25000), ('S',  '단체', 50000),
+  ('A+', '전공', 37500), ('A+', '부전공', 27500), ('A+', '전문반', 27500), ('A+', '취미', 25000), ('A+', '단체', 47500),
+  ('A',  '전공', 35000), ('A',  '부전공', 27500), ('A',  '전문반', 27500), ('A',  '취미', 25000), ('A',  '단체', 45000),
+  ('A-', '전공', 32500), ('A-', '부전공', 27500), ('A-', '전문반', 27500), ('A-', '취미', 25000), ('A-', '단체', 42500),
+  ('B',  '전공', 30000), ('B',  '부전공', 27500), ('B',  '전문반', 27500), ('B',  '취미', 25000), ('B',  '단체', 40000)
 ON CONFLICT (grade, lesson_type) DO NOTHING;

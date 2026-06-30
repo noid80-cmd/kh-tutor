@@ -246,6 +246,7 @@ interface EvalFormState {
   content: string
   next_goal: string
   date: string
+  start_time: string
   student_id?: string
   group_id?: string
   lesson_type: LessonType
@@ -328,9 +329,9 @@ function TodayView({ instructor }: { instructor: Instructor }) {
     if (expandedId === id) { setExpandedId(null); setForm(null); return }
     setExpandedId(id)
     if (item.kind === 'individual') {
-      setForm({ attended:true, content:'', next_goal:'', date:todayStr(), student_id:item.assignment.student_id, lesson_type:item.assignment.lesson_type, absence_type:null, makeup_date:'' })
+      setForm({ attended:true, content:'', next_goal:'', date:todayStr(), start_time:item.assignment.start_time?.slice(0,5) ?? '', student_id:item.assignment.student_id, lesson_type:item.assignment.lesson_type, absence_type:null, makeup_date:'' })
     } else {
-      setForm({ attended:true, content:'', next_goal:'', date:todayStr(), group_id:item.group.id, lesson_type:'단체', absence_type:null, makeup_date:'' })
+      setForm({ attended:true, content:'', next_goal:'', date:todayStr(), start_time:item.group.start_time?.slice(0,5) ?? '', group_id:item.group.id, lesson_type:'단체', absence_type:null, makeup_date:'' })
     }
   }
 
@@ -359,7 +360,7 @@ function TodayView({ instructor }: { instructor: Instructor }) {
     setSubmitting(true); setError('')
     const isAbsent = form.student_id && !form.attended
     const { error: err } = await supabase.from('evaluations').insert({
-      instructor_id: instructor.id, date: form.date, lesson_type: form.lesson_type,
+      instructor_id: instructor.id, date: form.date, start_time: form.start_time || null, lesson_type: form.lesson_type,
       student_id: form.student_id ?? null,
       attended: form.student_id ? form.attended : null,
       absence_type: isAbsent ? (form.absence_type ?? null) : null,
@@ -507,9 +508,15 @@ function TodayView({ instructor }: { instructor: Instructor }) {
 
               {isExpanded && form && (
                 <div style={{ borderTop:'1px solid #222', padding:'14px 16px', display:'flex', flexDirection:'column', gap:12 }}>
-                  <div>
-                    <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>날짜</label>
-                    <input type="date" value={form.date} onChange={e => setForm(f => f && ({ ...f, date:e.target.value }))} style={inputStyle} />
+                  <div style={{ display:'flex', gap:8 }}>
+                    <div style={{ flex:1 }}>
+                      <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>날짜</label>
+                      <input type="date" value={form.date} onChange={e => setForm(f => f && ({ ...f, date:e.target.value }))} style={inputStyle} />
+                    </div>
+                    <div style={{ width:110 }}>
+                      <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>시간</label>
+                      <input type="time" value={form.start_time} onChange={e => setForm(f => f && ({ ...f, start_time:e.target.value }))} style={inputStyle} />
+                    </div>
                   </div>
                   {form.student_id && (
                     <>
@@ -601,6 +608,7 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
   const [content, setContent] = useState('')
   const [nextGoal, setNextGoal] = useState('')
   const [date, setDate] = useState(todayStr())
+  const [startTime, setStartTime] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -632,7 +640,7 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
     if (!content.trim()) { setError('수업 내용을 입력해주세요'); return }
     setSubmitting(true); setError('')
     const { error: err } = await supabase.from('evaluations').insert({
-      instructor_id: instructorId, date, lesson_type: kind === 'group' ? '단체' : lessonType,
+      instructor_id: instructorId, date, start_time: startTime || null, lesson_type: kind === 'group' ? '단체' : lessonType,
       student_id: kind === 'individual' ? studentId : null, attended: kind === 'individual' ? attended : null,
       group_id: null, group_name: kind === 'group' ? groupName : null,
       content: content.trim(), next_goal: nextGoal.trim() || null, status: 'submitted',
@@ -660,9 +668,18 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
           ))}
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          <FormField label="날짜">
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} />
-          </FormField>
+          <div style={{ display:'flex', gap:8 }}>
+            <div style={{ flex:1 }}>
+              <FormField label="날짜">
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} />
+              </FormField>
+            </div>
+            <div style={{ width:110 }}>
+              <FormField label="시간">
+                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={inputStyle} />
+              </FormField>
+            </div>
+          </div>
           {kind === 'individual' && (
             <>
               <FormField label="학생 *">
@@ -806,6 +823,7 @@ function MonthlyView({ instructor }: { instructor: Instructor }) {
                     const d = new Date(ev.date + 'T00:00:00')
                     const approved = ev.status === 'approved'
                     const absent = ev.student_id != null && !ev.attended
+                    const timeLabel = ev.start_time ? ` ${ev.start_time.slice(0,5)}` : ''
                     return (
                       <button key={ev.id} onClick={() => setSelectedEval(selectedEval?.id === ev.id ? null : ev)} style={{
                         background: approved ? 'rgba(96,176,128,0.15)' : absent ? 'rgba(224,112,96,0.1)' : 'rgba(192,160,96,0.1)',
@@ -813,7 +831,7 @@ function MonthlyView({ instructor }: { instructor: Instructor }) {
                         color: approved ? '#60b080' : absent ? '#e07060' : '#c0a060',
                         borderRadius:8, padding:'5px 11px', fontSize:13, fontWeight:700, cursor:'pointer',
                       }}>
-                        {d.getMonth() + 1}/{d.getDate()}
+                        {d.getMonth() + 1}/{d.getDate()}{timeLabel}
                       </button>
                     )
                   })}

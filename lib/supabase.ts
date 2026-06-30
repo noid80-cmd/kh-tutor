@@ -87,6 +87,7 @@ export interface Evaluation {
   group_name: string | null
   content: string
   next_goal: string | null
+  start_time: string | null
   status: EvalStatus
   approved_at: string | null
   created_at: string

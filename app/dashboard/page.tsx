@@ -1904,25 +1904,25 @@ function RatesManage() {
   return (
     <div>
       <div style={{ fontSize:12, color:'#888', marginBottom:12 }}>셀을 눌러 단가를 수정할 수 있어요 (단위: 원)</div>
-      <div style={{ background:'#141416', borderRadius:10, border:'1px solid #222', overflow:'hidden' }}>
-        <div style={{ display:'grid', gridTemplateColumns:'40px repeat(7, 1fr)', background:'#1a1a1c', borderBottom:'1px solid #222' }}>
-          <div style={{ padding:'8px 4px' }} />
-          {LESSON_TYPES.map(t => (
-            <div key={t} style={{ padding:'8px 2px', textAlign:'center', fontSize:10, fontWeight:700, color:'#aaa' }}>{t}</div>
+      <div style={{ background:'#141416', borderRadius:10, border:'1px solid #2a2a2e', overflow:'hidden' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'40px repeat(7, 1fr)', background:'#1e1e22', borderBottom:'2px solid #2a2a2e' }}>
+          <div style={{ padding:'10px 4px' }} />
+          {LESSON_TYPES.map((t, i) => (
+            <div key={t} style={{ padding:'10px 2px', textAlign:'center', fontSize:10, fontWeight:700, color:'#aaa', borderLeft: i === 0 ? '1px solid #2a2a2e' : '1px solid #2a2a2e' }}>{t}</div>
           ))}
         </div>
-        {GRADES.map(grade => (
-          <div key={grade} style={{ display:'grid', gridTemplateColumns:'40px repeat(7, 1fr)', borderBottom:'1px solid #1a1a1c' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'10px 0' }}>
+        {GRADES.map((grade, gi) => (
+          <div key={grade} style={{ display:'grid', gridTemplateColumns:'40px repeat(7, 1fr)', borderBottom:'1px solid #2a2a2e', background: gi % 2 === 1 ? '#161618' : '#141416' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'12px 0', borderRight:'1px solid #2a2a2e' }}>
               <Badge grade={grade} />
             </div>
-            {LESSON_TYPES.map(lt => {
+            {LESSON_TYPES.map((lt, ci) => {
               const r = rates.find(r => r.grade === grade && r.lesson_type === lt)
-              if (!r) return <div key={lt} />
+              if (!r) return <div key={lt} style={{ borderLeft:'1px solid #222' }} />
               const isEd = editing?.id === r.id
               return (
                 <div key={lt} onClick={() => !isEd && setEditing({ id:r.id, rate:r.rate })}
-                  style={{ padding:'8px 4px', textAlign:'center', cursor:'pointer', background: isEd ? '#1e2230' : 'transparent', borderRadius:4 }}>
+                  style={{ padding:'10px 4px', textAlign:'center', cursor:'pointer', background: isEd ? '#1e2230' : 'transparent', borderLeft:'1px solid #222' }}>
                   {isEd ? (
                     <input
                       type="number" value={editing.rate}

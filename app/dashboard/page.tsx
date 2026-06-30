@@ -571,7 +571,7 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
 
 // ── 수업 수정 모달 ─────────────────────────────────────────────
 
-function EditEvalModal({ eval: ev, onClose, onDone }: { eval: Evaluation; onClose: () => void; onDone: () => void }) {
+function EditEvalModal({ eval: ev, onClose, onDone, skipValidation }: { eval: Evaluation; onClose: () => void; onDone: () => void; skipValidation?: boolean }) {
   const [date, setDate] = useState(ev.date)
   const [startTime, setStartTime] = useState(ev.start_time ?? '')
   const [attended, setAttended] = useState(ev.attended ?? true)
@@ -585,8 +585,8 @@ function EditEvalModal({ eval: ev, onClose, onDone }: { eval: Evaluation; onClos
   async function submit() {
     if (!content.trim()) { setError('수업 내용을 입력해주세요'); return }
     const isAbsent = ev.student_id != null && !attended
-    if (!isAbsent && content.trim().length < 50) { setError(`수업 내용을 50자 이상 작성해주세요 (현재 ${content.trim().length}자)`); return }
-    if (!isAbsent && nextGoal.trim().length < 5) { setError('다음 목표를 5자 이상 입력해주세요'); return }
+    if (!skipValidation && !isAbsent && content.trim().length < 50) { setError(`수업 내용을 50자 이상 작성해주세요 (현재 ${content.trim().length}자)`); return }
+    if (!skipValidation && !isAbsent && nextGoal.trim().length < 5) { setError('다음 목표를 5자 이상 입력해주세요'); return }
     setSubmitting(true); setError('')
     const { error: err } = await supabase.from('evaluations').update({
       date, start_time: startTime || null,
@@ -829,10 +829,12 @@ function StudentsView({ instructor }: { instructor: Instructor }) {
 // ── 어드민: 평가서 승인 ───────────────────────────────────────
 
 function ApproveView() {
-  const [evals, setEvals] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'submitted' | 'approved' | 'all'>('submitted')
-  const [approving, setApproving] = useState<string | null>(null)
+  const [evals, setEvals]               = useState<any[]>([])
+  const [loading, setLoading]           = useState(true)
+  const [filter, setFilter]             = useState<'submitted' | 'approved' | 'all'>('submitted')
+  const [approving, setApproving]       = useState<string | null>(null)
+  const [editingEval, setEditingEval]   = useState<Evaluation | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<any | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -852,6 +854,12 @@ function ApproveView() {
     await supabase.from('evaluations').update({ status:'approved', approved_at:new Date().toISOString() }).eq('id', id)
     await load()
     setApproving(null)
+  }
+
+  async function deleteEval(id: string) {
+    await supabase.from('evaluations').delete().eq('id', id)
+    setConfirmDelete(null)
+    await load()
   }
 
   return (
@@ -879,15 +887,18 @@ function ApproveView() {
                   <span style={{ fontSize:14, fontWeight:700 }}>{ev.instructor?.name}</span>
                   <span style={{ fontSize:12, color:'#888' }}>→ {ev.student?.name ?? ev.group_name ?? ev.group?.name}</span>
                 </div>
-                {ev.status === 'approved' ? (
-                  <StatusBadge status="approved" />
-                ) : (
-                  <button onClick={() => approve(ev.id)} disabled={approving === ev.id} style={{
-                    background:'#c0a060', color:'#111', border:'none', borderRadius:7, padding:'5px 13px', fontSize:12, fontWeight:700, cursor:'pointer', opacity: approving===ev.id ? 0.6 : 1,
-                  }}>
-                    {approving === ev.id ? '...' : '승인'}
-                  </button>
-                )}
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  {ev.status !== 'approved' && (
+                    <button onClick={() => approve(ev.id)} disabled={approving === ev.id} style={{
+                      background:'#c0a060', color:'#111', border:'none', borderRadius:7, padding:'5px 13px', fontSize:12, fontWeight:700, cursor:'pointer', opacity: approving===ev.id ? 0.6 : 1,
+                    }}>
+                      {approving === ev.id ? '...' : '승인'}
+                    </button>
+                  )}
+                  {ev.status === 'approved' && <StatusBadge status="approved" />}
+                  <button onClick={() => setEditingEval(ev as Evaluation)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 10px', fontSize:12, cursor:'pointer' }}>수정</button>
+                  <button onClick={() => setConfirmDelete(ev)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#e07060', borderRadius:7, padding:'5px 10px', fontSize:12, cursor:'pointer' }}>삭제</button>
+                </div>
               </div>
               <div style={{ fontSize:11, color:'#666', marginBottom:6 }}>
                 {ev.date} · {ev.lesson_type}
@@ -898,6 +909,27 @@ function ApproveView() {
             </div>
           ))}
         </div>
+      )}
+      {editingEval && (
+        <EditEvalModal
+          eval={editingEval}
+          skipValidation
+          onClose={() => setEditingEval(null)}
+          onDone={() => { setEditingEval(null); load() }}
+        />
+      )}
+      {confirmDelete && (
+        <BottomSheet title="평가서 삭제" onClose={() => setConfirmDelete(null)}>
+          <div style={{ fontSize:13, color:'#aaa', lineHeight:1.6 }}>
+            <span style={{ fontWeight:700, color:'#e8e4d8' }}>{confirmDelete.instructor?.name}</span> 강사의{' '}
+            <span style={{ fontWeight:700, color:'#e8e4d8' }}>{confirmDelete.date}</span> 수업 평가서를 삭제할까요?
+          </div>
+          <div style={{ fontSize:11, color:'#e07060', marginTop:4 }}>삭제하면 복구할 수 없어요.</div>
+          <div style={{ display:'flex', gap:8, marginTop:4 }}>
+            <button onClick={() => setConfirmDelete(null)} style={{ flex:1, background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:8, padding:'11px', fontSize:13, fontWeight:700, cursor:'pointer' }}>취소</button>
+            <button onClick={() => deleteEval(confirmDelete.id)} style={{ flex:1, background:'rgba(224,80,80,0.15)', border:'1px solid rgba(224,80,80,0.4)', color:'#e07060', borderRadius:8, padding:'11px', fontSize:13, fontWeight:700, cursor:'pointer' }}>삭제</button>
+          </div>
+        </BottomSheet>
       )}
     </div>
   )

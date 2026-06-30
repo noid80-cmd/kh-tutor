@@ -54,7 +54,7 @@ export default function LoginPage() {
             style={{ width: 96, height: 96, background: 'linear-gradient(145deg, #d4942a, #7a5010)', boxShadow: '0 20px 56px rgba(212,148,42,0.4)' }}>
             <span style={{ color: '#0e0c08', fontWeight: 900, fontSize: 56, fontFamily: 'Georgia, serif', lineHeight: 1, marginTop: 4 }}>K</span>
           </div>
-          <p style={{ color: 'rgba(212,168,67,0.6)', fontSize: 14, fontWeight: 600, letterSpacing: 1 }}>KH Music & Studio</p>
+          <h1 style={{ color: '#fff', fontSize: 28, fontWeight: 900, letterSpacing: -0.5, margin: 0 }}>KH Tutor</h1>
         </div>
 
         <div className="w-full flex flex-col" style={{ gap: 12 }}>

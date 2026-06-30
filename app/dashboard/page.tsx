@@ -448,8 +448,10 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
   async function submit() {
     if (kind === 'individual' && !studentId) { setError('학생을 선택해주세요'); return }
     if (kind === 'group' && !groupName) { setError('수업을 선택해주세요'); return }
-    if (content.trim().length < 50) { setError(`수업 내용을 50자 이상 작성해주세요 (현재 ${content.trim().length}자)`); return }
-    if (nextGoal.trim().length < 5) { setError('다음 목표를 5자 이상 입력해주세요'); return }
+    if (!content.trim()) { setError('수업 내용을 입력해주세요'); return }
+    const isAbsent = kind === 'individual' && !attended
+    if (!isAbsent && content.trim().length < 50) { setError(`수업 내용을 50자 이상 작성해주세요 (현재 ${content.trim().length}자)`); return }
+    if (!isAbsent && nextGoal.trim().length < 5) { setError('다음 목표를 5자 이상 입력해주세요'); return }
     setSubmitting(true); setError('')
     const { error: err } = await supabase.from('evaluations').insert({
       instructor_id: instructorId, date, start_time: startTime || null, lesson_type: kind === 'group' ? '단체' : lessonType,
@@ -577,8 +579,10 @@ function EditEvalModal({ eval: ev, onClose, onDone }: { eval: Evaluation; onClos
   const sName = (ev as any).student?.name ?? ev.group_name ?? '단체 수업'
 
   async function submit() {
-    if (content.trim().length < 50) { setError(`수업 내용을 50자 이상 작성해주세요 (현재 ${content.trim().length}자)`); return }
-    if (nextGoal.trim().length < 5) { setError('다음 목표를 5자 이상 입력해주세요'); return }
+    if (!content.trim()) { setError('수업 내용을 입력해주세요'); return }
+    const isAbsent = ev.student_id != null && !attended
+    if (!isAbsent && content.trim().length < 50) { setError(`수업 내용을 50자 이상 작성해주세요 (현재 ${content.trim().length}자)`); return }
+    if (!isAbsent && nextGoal.trim().length < 5) { setError('다음 목표를 5자 이상 입력해주세요'); return }
     setSubmitting(true); setError('')
     const { error: err } = await supabase.from('evaluations').update({
       date, start_time: startTime || null,

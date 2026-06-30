@@ -284,7 +284,7 @@ function TodayView({ instructor }: { instructor: Instructor }) {
       const [asRes, gcRes, evRes, allAsRes, mkRes] = await Promise.all([
         supabase.from('assignments').select('*, student:students(*)').eq('instructor_id', instructor.id).eq('is_active', true).eq('day_of_week', todayDow),
         supabase.from('group_classes').select('*').eq('instructor_id', instructor.id).eq('is_active', true).eq('day_of_week', todayDow),
-        supabase.from('evaluations').select('*').eq('instructor_id', instructor.id).eq('date', today),
+        supabase.from('evaluations').select('*, student:students(name)').eq('instructor_id', instructor.id).eq('date', today),
         supabase.from('assignments').select('id, enrolled_at').eq('instructor_id', instructor.id).eq('is_active', true),
         supabase.from('evaluations').select('*, student:students(name)').eq('instructor_id', instructor.id).eq('makeup_done', false).not('makeup_date', 'is', null),
       ])
@@ -392,6 +392,28 @@ function TodayView({ instructor }: { instructor: Instructor }) {
   const today = new Date()
   const dateLabel = `${today.getMonth()+1}월 ${today.getDate()}일 (${DAYS[today.getDay()]})`
 
+  type DisplayEntry =
+    | { type: 'item'; item: TodayItem; evalDone: Evaluation | undefined }
+    | { type: 'extra'; eval: Evaluation }
+  const orphanEvals = evals.filter(ev =>
+    !items.some(item =>
+      item.kind === 'individual'
+        ? item.assignment.student_id === ev.student_id
+        : item.group.id === ev.group_id
+    )
+  )
+  const displayList: DisplayEntry[] = [
+    ...items.map(item => ({ type: 'item' as const, item, evalDone: getEvalForItem(item) })),
+    ...orphanEvals.map(ev => ({ type: 'extra' as const, eval: ev })),
+  ]
+  displayList.sort((a, b) => {
+    const t = (e: DisplayEntry) =>
+      e.type === 'item'
+        ? (e.item.kind === 'individual' ? e.item.assignment.start_time : e.item.group.start_time) ?? '99:99'
+        : e.eval.start_time ?? '99:99'
+    return t(a).localeCompare(t(b))
+  })
+
   return (
     <div style={{ padding:'18px 16px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
@@ -425,16 +447,42 @@ function TodayView({ instructor }: { instructor: Instructor }) {
         </div>
       )}
 
-      {items.length === 0 && (
+      {displayList.length === 0 && (
         <div style={{ textAlign:'center', color:'#555', padding:'40px 0', fontSize:13 }}>
           오늘 진행한 수업을 추가해주세요
         </div>
       )}
 
       <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-        {items.map(item => {
+        {displayList.map(entry => {
+          if (entry.type === 'extra') {
+            const ev = entry.eval
+            const sName = (ev as any).student?.name ?? ev.group_name ?? '단체 수업'
+            const tStr = ev.start_time ? `${parseInt(ev.start_time)}시` : ''
+            return (
+              <div key={ev.id} style={{ background:'#141416', borderRadius:12, border:'1px solid #2a3a2a', overflow:'hidden' }}>
+                <div style={{ padding:'14px 16px' }}>
+                  <div style={{ fontSize:15, fontWeight:700 }}>{sName}</div>
+                  <div style={{ fontSize:11, color:'#888', marginTop:2 }}>
+                    {ev.lesson_type}{tStr && <span style={{ marginLeft:6 }}>{tStr}</span>}
+                  </div>
+                </div>
+                <div style={{ borderTop:'1px solid #1e1e20', padding:'10px 16px', background:'#111113' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:5 }}>
+                    <StatusBadge status={ev.status} />
+                    {ev.student_id != null && (
+                      <span style={{ fontSize:11, color: ev.attended ? '#60b080' : '#e07060', fontWeight:700 }}>
+                        {ev.attended ? '출석' : '결석'}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:12, color:'#aaa', lineHeight:1.6 }}>{ev.content}</div>
+                </div>
+              </div>
+            )
+          }
+          const { item, evalDone } = entry
           const id = item.kind === 'individual' ? item.assignment.id : item.group.id
-          const evalDone = getEvalForItem(item)
           const isExpanded = expandedId === id
           const rsInfo = item.kind === 'individual' ? getRescheduleInfo(item.assignment) : null
           const quotaExceeded = rsInfo ? rsInfo.used >= rsInfo.quota : false

@@ -279,34 +279,37 @@ function TodayView({ instructor }: { instructor: Instructor }) {
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const today = todayStr()
-    const [asRes, gcRes, evRes, allAsRes, mkRes] = await Promise.all([
-      supabase.from('assignments').select('*, student:students(*)').eq('instructor_id', instructor.id).eq('is_active', true).eq('day_of_week', todayDow),
-      supabase.from('group_classes').select('*').eq('instructor_id', instructor.id).eq('is_active', true).eq('day_of_week', todayDow),
-      supabase.from('evaluations').select('*').eq('instructor_id', instructor.id).eq('date', today),
-      supabase.from('assignments').select('id, enrolled_at').eq('instructor_id', instructor.id).eq('is_active', true),
-      supabase.from('evaluations').select('*, student:students(name)').eq('instructor_id', instructor.id).eq('makeup_done', false).not('makeup_date', 'is', null),
-    ])
-    const assignmentIds = (allAsRes.data ?? []).map((a: any) => a.id)
-    let rsData: LessonReschedule[] = []
-    if (assignmentIds.length > 0) {
-      const { data } = await supabase.from('lesson_reschedules').select('*').in('assignment_id', assignmentIds)
-      rsData = data ?? []
+    try {
+      const today = todayStr()
+      const [asRes, gcRes, evRes, allAsRes, mkRes] = await Promise.all([
+        supabase.from('assignments').select('*, student:students(*)').eq('instructor_id', instructor.id).eq('is_active', true).eq('day_of_week', todayDow),
+        supabase.from('group_classes').select('*').eq('instructor_id', instructor.id).eq('is_active', true).eq('day_of_week', todayDow),
+        supabase.from('evaluations').select('*').eq('instructor_id', instructor.id).eq('date', today),
+        supabase.from('assignments').select('id, enrolled_at').eq('instructor_id', instructor.id).eq('is_active', true),
+        supabase.from('evaluations').select('*, student:students(name)').eq('instructor_id', instructor.id).eq('makeup_done', false).not('makeup_date', 'is', null),
+      ])
+      const assignmentIds = (allAsRes.data ?? []).map((a: any) => a.id)
+      let rsData: LessonReschedule[] = []
+      if (assignmentIds.length > 0) {
+        const { data } = await supabase.from('lesson_reschedules').select('*').in('assignment_id', assignmentIds)
+        rsData = data ?? []
+      }
+      const todayItems: TodayItem[] = [
+        ...(asRes.data ?? []).map((a: any) => ({ kind: 'individual' as const, assignment: a })),
+        ...(gcRes.data ?? []).map((g: any) => ({ kind: 'group' as const, group: g })),
+      ]
+      todayItems.sort((a, b) => {
+        const aTime = (a.kind === 'individual' ? a.assignment.start_time : a.group.start_time) ?? '99:99'
+        const bTime = (b.kind === 'individual' ? b.assignment.start_time : b.group.start_time) ?? '99:99'
+        return aTime.localeCompare(bTime)
+      })
+      setItems(todayItems)
+      setEvals(evRes.data ?? [])
+      setReschedules(rsData)
+      setPendingMakeups((mkRes.data ?? []) as any)
+    } finally {
+      setLoading(false)
     }
-    const todayItems: TodayItem[] = [
-      ...(asRes.data ?? []).map((a: any) => ({ kind: 'individual' as const, assignment: a })),
-      ...(gcRes.data ?? []).map((g: any) => ({ kind: 'group' as const, group: g })),
-    ]
-    todayItems.sort((a, b) => {
-      const aTime = (a.kind === 'individual' ? a.assignment.start_time : a.group.start_time) ?? '99:99'
-      const bTime = (b.kind === 'individual' ? b.assignment.start_time : b.group.start_time) ?? '99:99'
-      return aTime.localeCompare(bTime)
-    })
-    setItems(todayItems)
-    setEvals(evRes.data ?? [])
-    setReschedules(rsData)
-    setPendingMakeups((mkRes.data ?? []) as any)
-    setLoading(false)
   }, [instructor.id, todayDow])
 
   useEffect(() => { loadData() }, [loadData])

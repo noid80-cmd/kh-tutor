@@ -2199,6 +2199,12 @@ function AdminsManage() {
     if (admins.includes(e)) { setError('이미 등록된 이메일이에요'); return }
     setSaving(true); setError('')
     await supabase.from('admins').insert({ email: e })
+    const { data: { user } } = await supabase.auth.getUser()
+    await fetch('/api/create-instructor', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: e, callerEmail: user?.email }),
+    })
     setEmail('')
     await load()
     setSaving(false)
@@ -2214,7 +2220,7 @@ function AdminsManage() {
 
   return (
     <div>
-      <div style={{ fontSize:12, color:'#666', marginBottom:16 }}>등록된 이메일로 로그인하면 관리자 권한이 부여돼요.</div>
+      <div style={{ fontSize:12, color:'#666', marginBottom:16 }}>이메일 추가 시 계정이 자동 생성돼요. 초기 비밀번호는 <span style={{ color:'#c0a060' }}>kh1234</span>예요.</div>
       <div style={{ display:'flex', gap:8, marginBottom:16 }}>
         <input
           value={email}

@@ -253,6 +253,7 @@ function TodayView({ instructor }: { instructor: Instructor }) {
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingEval, setEditingEval] = useState<Evaluation | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -280,8 +281,9 @@ function TodayView({ instructor }: { instructor: Instructor }) {
   }
 
   async function deleteEval(id: string) {
-    if (!confirm('이 수업 기록을 삭제할까요?')) return
     await supabase.from('evaluations').delete().eq('id', id)
+    setConfirmDeleteId(null)
+    setExpandedId(null)
     await loadData()
   }
 
@@ -373,10 +375,20 @@ function TodayView({ instructor }: { instructor: Instructor }) {
                     <div style={{ fontSize:12, color:'#666', marginBottom: editable ? 12 : 0, paddingTop:8, borderTop:'1px solid #1e1e20' }}>다음: {ev.next_goal}</div>
                   )}
                   {editable && (
-                    <div style={{ display:'flex', gap:8 }}>
-                      <button onClick={e => { e.stopPropagation(); setEditingEval(ev) }} style={{ flex:1, background:'#1e1e2a', border:'1px solid #3a3a5a', color:'#8888cc', borderRadius:8, padding:'8px', fontSize:13, fontWeight:600, cursor:'pointer' }}>수정</button>
-                      <button onClick={e => { e.stopPropagation(); deleteEval(ev.id) }} style={{ flex:1, background:'#2a1a1a', border:'1px solid #5a2a2a', color:'#cc6666', borderRadius:8, padding:'8px', fontSize:13, fontWeight:600, cursor:'pointer' }}>삭제</button>
-                    </div>
+                    confirmDeleteId === ev.id ? (
+                      <div style={{ display:'flex', flexDirection:'column', gap:8, background:'rgba(224,80,80,0.08)', border:'1px solid rgba(224,80,80,0.25)', borderRadius:10, padding:'10px 12px' }}>
+                        <div style={{ fontSize:13, color:'#e08080', textAlign:'center' }}>이 수업 기록을 삭제할까요?</div>
+                        <div style={{ display:'flex', gap:8 }}>
+                          <button onClick={e => { e.stopPropagation(); deleteEval(ev.id) }} style={{ flex:1, background:'rgba(200,60,60,0.2)', border:'1px solid rgba(200,60,60,0.5)', color:'#ff8888', borderRadius:8, padding:'9px', fontSize:13, fontWeight:700, cursor:'pointer' }}>삭제</button>
+                          <button onClick={e => { e.stopPropagation(); setConfirmDeleteId(null) }} style={{ flex:1, background:'#1e1e20', border:'1px solid #333', color:'#888', borderRadius:8, padding:'9px', fontSize:13, fontWeight:600, cursor:'pointer' }}>취소</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display:'flex', gap:8 }}>
+                        <button onClick={e => { e.stopPropagation(); setEditingEval(ev) }} style={{ flex:1, background:'#1e1e2a', border:'1px solid #3a3a5a', color:'#8888cc', borderRadius:8, padding:'8px', fontSize:13, fontWeight:600, cursor:'pointer' }}>수정</button>
+                        <button onClick={e => { e.stopPropagation(); setConfirmDeleteId(ev.id) }} style={{ flex:1, background:'#2a1a1a', border:'1px solid #5a2a2a', color:'#cc6666', borderRadius:8, padding:'8px', fontSize:13, fontWeight:600, cursor:'pointer' }}>삭제</button>
+                      </div>
+                    )
                   )}
                 </div>
               )}

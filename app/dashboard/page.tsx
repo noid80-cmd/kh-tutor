@@ -1933,7 +1933,7 @@ function RatesManage() {
                       style={{ width:'100%', background:'transparent', border:'none', color:'#c0a060', textAlign:'center', fontSize:11, fontWeight:700, outline:'none' }}
                     />
                   ) : (
-                    <div style={{ fontSize:11, color:'#ddd' }}>{(r.rate/10000).toFixed(r.rate%10000 ? 1 : 0)}만</div>
+                    <div style={{ fontSize:11, color:'#ddd' }}>{r.rate%10000===0 ? `${r.rate/10000}만` : r.rate%1000===0 ? `${(r.rate/10000).toFixed(1)}만` : `${(r.rate/10000).toFixed(2)}만`}</div>
                   )}
                 </div>
               )

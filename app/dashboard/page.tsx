@@ -252,6 +252,7 @@ function TodayView({ instructor }: { instructor: Instructor }) {
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editingEval, setEditingEval] = useState<Evaluation | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -327,40 +328,58 @@ function TodayView({ instructor }: { instructor: Instructor }) {
         </div>
       )}
 
-      <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
         {evals.map(ev => {
           const sName = (ev as any).student?.name ?? ev.group_name ?? '단체 수업'
-          const tStr = ev.start_time ? `${parseInt(ev.start_time)}시` : ''
+          const hour = ev.start_time ? parseInt(ev.start_time) : null
           const editable = ev.status === 'submitted'
+          const isOpen = expandedId === ev.id
           return (
-            <div key={ev.id} style={{ background:'#141416', borderRadius:12, border:`1px solid ${editable ? '#2a2a1e' : '#2a3a2a'}`, overflow:'hidden' }}>
-              <div style={{ padding:'14px 16px' }}>
-                <div style={{ fontSize:15, fontWeight:700 }}>{sName}</div>
-                <div style={{ fontSize:11, color:'#888', marginTop:2 }}>
-                  {ev.lesson_type}{tStr && <span style={{ marginLeft:6 }}>{tStr}</span>}
+            <div key={ev.id} style={{ background:'#141416', borderRadius:12, border:`1px solid ${isOpen ? '#3a3a2a' : '#222'}`, overflow:'hidden' }}>
+              <button
+                onClick={() => setExpandedId(isOpen ? null : ev.id)}
+                style={{ width:'100%', background:'none', border:'none', padding:'14px 16px', display:'flex', alignItems:'center', gap:14, cursor:'pointer', textAlign:'left' }}
+              >
+                <div style={{ minWidth:48, textAlign:'center', flexShrink:0 }}>
+                  {hour != null ? (
+                    <>
+                      <div style={{ fontSize:28, fontWeight:900, color:'#c0a060', lineHeight:1 }}>{hour}</div>
+                      <div style={{ fontSize:11, color:'#888', marginTop:1 }}>시</div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize:20, color:'#444', fontWeight:700 }}>-</div>
+                  )}
                 </div>
-              </div>
-              <div style={{ borderTop:'1px solid #1e1e20', padding:'10px 16px', background:'#111113' }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ width:1, height:40, background:'#2a2a2a', flexShrink:0 }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:16, fontWeight:700, color:'#e8e4d8' }}>{sName}</div>
+                  <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4, flexWrap:'wrap' }}>
+                    <span style={{ fontSize:11, color:'#888' }}>{ev.lesson_type}</span>
                     <StatusBadge status={ev.status} />
                     {ev.student_id != null && (
-                      <span style={{ fontSize:11, color: ev.attended ? '#60b080' : '#e07060', fontWeight:700 }}>
+                      <span style={{ fontSize:11, fontWeight:700, color: ev.attended ? '#60b080' : '#e07060' }}>
                         {ev.attended ? '출석' : '결석'}
                       </span>
                     )}
                   </div>
+                </div>
+                <div style={{ color:'#555', fontSize:18, flexShrink:0 }}>{isOpen ? '∧' : '∨'}</div>
+              </button>
+
+              {isOpen && (
+                <div style={{ borderTop:'1px solid #1e1e20', padding:'12px 16px 14px', background:'#111113' }}>
+                  <div style={{ fontSize:13, color:'#bbb', lineHeight:1.8, whiteSpace:'pre-wrap', marginBottom: editable ? 12 : 0 }}>{ev.content}</div>
+                  {ev.next_goal && (
+                    <div style={{ fontSize:12, color:'#666', marginBottom: editable ? 12 : 0, paddingTop:8, borderTop:'1px solid #1e1e20' }}>다음: {ev.next_goal}</div>
+                  )}
                   {editable && (
-                    <div style={{ display:'flex', gap:6 }}>
-                      <button onClick={() => setEditingEval(ev)} style={{ background:'#1e1e2a', border:'1px solid #3a3a5a', color:'#8888cc', borderRadius:6, padding:'3px 10px', fontSize:11, cursor:'pointer' }}>수정</button>
-                      <button onClick={() => deleteEval(ev.id)} style={{ background:'#2a1a1a', border:'1px solid #5a2a2a', color:'#cc6666', borderRadius:6, padding:'3px 10px', fontSize:11, cursor:'pointer' }}>삭제</button>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <button onClick={e => { e.stopPropagation(); setEditingEval(ev) }} style={{ flex:1, background:'#1e1e2a', border:'1px solid #3a3a5a', color:'#8888cc', borderRadius:8, padding:'8px', fontSize:13, fontWeight:600, cursor:'pointer' }}>수정</button>
+                      <button onClick={e => { e.stopPropagation(); deleteEval(ev.id) }} style={{ flex:1, background:'#2a1a1a', border:'1px solid #5a2a2a', color:'#cc6666', borderRadius:8, padding:'8px', fontSize:13, fontWeight:600, cursor:'pointer' }}>삭제</button>
                     </div>
                   )}
                 </div>
-                <div style={{ fontSize:12, color:'#aaa', lineHeight:1.6, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
-                  {ev.content}
-                </div>
-              </div>
+              )}
             </div>
           )
         })}

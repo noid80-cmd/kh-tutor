@@ -508,20 +508,18 @@ function TodayView({ instructor }: { instructor: Instructor }) {
 
               {isExpanded && form && (
                 <div style={{ borderTop:'1px solid #222', padding:'14px 16px', display:'flex', flexDirection:'column', gap:12 }}>
-                  <div style={{ display:'flex', gap:8 }}>
-                    <div style={{ flex:1 }}>
-                      <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>날짜</label>
-                      <input type="date" value={form.date} onChange={e => setForm(f => f && ({ ...f, date:e.target.value }))} style={inputStyle} />
-                    </div>
-                    <div style={{ width:90 }}>
-                      <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>시간</label>
-                      <select value={form.start_time} onChange={e => setForm(f => f && ({ ...f, start_time:e.target.value }))} style={inputStyle}>
-                        <option value="">-</option>
-                        {Array.from({length:14}, (_,i) => i+9).map(h => (
-                          <option key={h} value={`${String(h).padStart(2,'0')}:00`}>{h}시</option>
-                        ))}
-                      </select>
-                    </div>
+                  <div>
+                    <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>날짜</label>
+                    <input type="date" value={form.date} onChange={e => setForm(f => f && ({ ...f, date:e.target.value }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>시간</label>
+                    <select value={form.start_time} onChange={e => setForm(f => f && ({ ...f, start_time:e.target.value }))} style={inputStyle}>
+                      <option value="">-</option>
+                      {Array.from({length:14}, (_,i) => i+9).map(h => (
+                        <option key={h} value={`${String(h).padStart(2,'0')}:00`}>{h}시</option>
+                      ))}
+                    </select>
                   </div>
                   {form.student_id && (
                     <>
@@ -673,23 +671,17 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
           ))}
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-          <div style={{ display:'flex', gap:8 }}>
-            <div style={{ flex:1 }}>
-              <FormField label="날짜">
-                <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} />
-              </FormField>
-            </div>
-            <div style={{ width:90 }}>
-              <FormField label="시간">
-                <select value={startTime} onChange={e => setStartTime(e.target.value)} style={selectStyle}>
-                  <option value="">-</option>
-                  {Array.from({length:14}, (_,i) => i+9).map(h => (
-                    <option key={h} value={`${String(h).padStart(2,'0')}:00`}>{h}시</option>
-                  ))}
-                </select>
-              </FormField>
-            </div>
-          </div>
+          <FormField label="날짜">
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} />
+          </FormField>
+          <FormField label="시간">
+            <select value={startTime} onChange={e => setStartTime(e.target.value)} style={selectStyle}>
+              <option value="">-</option>
+              {Array.from({length:14}, (_,i) => i+9).map(h => (
+                <option key={h} value={`${String(h).padStart(2,'0')}:00`}>{h}시</option>
+              ))}
+            </select>
+          </FormField>
           {kind === 'individual' && (
             <>
               <FormField label="학생 *">

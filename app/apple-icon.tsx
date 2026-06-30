@@ -28,7 +28,7 @@ export default async function AppleIcon() {
           fontFamily: 'Cinzel, serif',
           display: 'flex',
           lineHeight: 1,
-          marginTop: -4,
+          marginTop: 4,
         }}>K</div>
       </div>
     ),

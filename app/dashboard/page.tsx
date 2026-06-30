@@ -92,8 +92,8 @@ const selectStyle: React.CSSProperties = {
 
 function BottomSheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:200, display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
-      <div style={{ background:'#141416', borderRadius:'16px 16px 0 0', padding:'20px 16px 36px', maxHeight:'90vh', overflowY:'auto' }}>
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px 16px' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:'#141416', borderRadius:16, padding:'20px 16px 28px', maxHeight:'85vh', overflowY:'auto', width:'100%' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
           <div style={{ fontSize:16, fontWeight:800 }}>{title}</div>
           <button onClick={onClose} style={{ background:'none', border:'none', color:'#888', fontSize:22, cursor:'pointer', lineHeight:1 }}>×</button>

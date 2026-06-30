@@ -134,8 +134,9 @@ export default function Dashboard() {
   const [tab, setTab] = useState<string>('today')
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (!user) { router.push('/login'); return }
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) { router.push('/login'); return }
+      const user = session.user
       const admin = user.email === ADMIN_EMAIL
       setIsAdmin(admin)
       setUserEmail(user.email ?? '')

@@ -3,9 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: { flowType: 'implicit' },
-})
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export type Grade = 'S' | 'A+' | 'A' | 'A-' | 'B'
 export type LessonType = '전공' | '오디션' | '부전공' | '전문반' | '취미' | '단체' | '댄스'

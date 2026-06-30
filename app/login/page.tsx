@@ -49,13 +49,12 @@ export default function LoginPage() {
 
       <div className="w-full max-w-sm flex flex-col items-center" style={{ marginBottom: '12vh' }}>
         {/* 로고 */}
-        <div className="flex flex-col items-center" style={{ marginBottom: 40 }}>
-          <div className="w-20 h-20 rounded-3xl mb-6 flex items-center justify-center"
-            style={{ background: 'linear-gradient(145deg, #d4942a, #7a5010)', boxShadow: '0 16px 48px rgba(212,148,42,0.35)' }}>
-            <span style={{ color: '#0e0c08', fontWeight: 900, fontSize: 28, fontFamily: 'Georgia, serif' }}>K</span>
+        <div className="flex flex-col items-center" style={{ marginBottom: 48 }}>
+          <div className="rounded-3xl mb-5 flex items-center justify-center"
+            style={{ width: 96, height: 96, background: 'linear-gradient(145deg, #d4942a, #7a5010)', boxShadow: '0 20px 56px rgba(212,148,42,0.4)' }}>
+            <span style={{ color: '#0e0c08', fontWeight: 900, fontSize: 56, fontFamily: 'Georgia, serif', lineHeight: 1, marginTop: 4 }}>K</span>
           </div>
-          <h1 className="text-3xl font-black text-white tracking-tight mb-2">KH Tutor</h1>
-          <p style={{ color: 'rgba(212,168,67,0.5)', fontSize: 13 }}>KH Music & Studio</p>
+          <p style={{ color: 'rgba(212,168,67,0.6)', fontSize: 14, fontWeight: 600, letterSpacing: 1 }}>KH Music & Studio</p>
         </div>
 
         <div className="w-full flex flex-col" style={{ gap: 12 }}>

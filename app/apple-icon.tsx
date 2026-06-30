@@ -24,7 +24,7 @@ export default async function AppleIcon() {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <div style={{
-          fontSize: 140, fontWeight: 900, color: '#0e0c08',
+          fontSize: 140, fontWeight: 900, color: '#3a2000',
           fontFamily: 'Cinzel, serif',
           display: 'flex',
           lineHeight: 1,

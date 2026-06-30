@@ -3,7 +3,19 @@ import { ImageResponse } from 'next/og'
 export const size = { width: 32, height: 32 }
 export const contentType = 'image/png'
 
-export default function Icon() {
+async function loadFont() {
+  const css = await fetch(
+    'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@900',
+    { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' } }
+  ).then(r => r.text())
+  const url = css.match(/src: url\((.+?)\) format/)?.[1]
+  if (!url) return null
+  return fetch(url).then(r => r.arrayBuffer())
+}
+
+export default async function Icon() {
+  const fontData = await loadFont()
+
   return new ImageResponse(
     (
       <div style={{
@@ -12,12 +24,16 @@ export default function Icon() {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <div style={{
-          fontSize: 22, fontWeight: 900, color: '#0e0c08',
-          fontFamily: 'Georgia, serif', display: 'flex',
-          marginTop: 2,
+          fontSize: 24, fontWeight: 900, color: '#0e0c08',
+          fontFamily: 'Playfair Display, serif',
+          display: 'flex',
+          marginTop: -1,
         }}>K</div>
       </div>
     ),
-    { ...size }
+    {
+      ...size,
+      fonts: fontData ? [{ name: 'Playfair Display', data: fontData, style: 'normal' as const, weight: 900 }] : [],
+    }
   )
 }

@@ -2220,7 +2220,7 @@ function AdminsManage() {
 
   return (
     <div>
-      <div style={{ fontSize:12, color:'#666', marginBottom:16 }}>이메일 추가 시 계정이 자동 생성돼요. 초기 비밀번호는 <span style={{ color:'#c0a060' }}>kh1234</span>예요.</div>
+      <div style={{ fontSize:12, color:'#666', marginBottom:16 }}>등록된 이메일로 로그인하면 관리자 권한이 부여돼요.</div>
       <div style={{ display:'flex', gap:8, marginBottom:16 }}>
         <input
           value={email}

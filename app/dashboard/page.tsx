@@ -1791,24 +1791,20 @@ function AssignmentsManage() {
 function GroupsManage() {
   const [groups, setGroups]           = useState<any[]>([])
   const [instructors, setInstructors] = useState<any[]>([])
-  const [allStudents, setAllStudents] = useState<any[]>([])
   const [loading, setLoading]         = useState(true)
   const [showForm, setShowForm]       = useState(false)
   const [editingGroup, setEditingGroup] = useState<any>(null)
   const [form, setForm] = useState({ name:'', instructor_id:'', day_of_week:'', start_time:'' })
   const [saving, setSaving]           = useState(false)
-  const [studentModal, setStudentModal] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [gcRes, inRes, stRes] = await Promise.all([
-      supabase.from('group_classes').select('*, instructor:instructors(name,grade), group_students(student:students(*))').eq('is_active', true).order('name'),
+    const [gcRes, inRes] = await Promise.all([
+      supabase.from('group_classes').select('*, instructor:instructors(name,grade)').eq('is_active', true).order('name'),
       supabase.from('instructors').select('id,name,grade').eq('is_active', true).order('name'),
-      supabase.from('students').select('*').eq('is_active', true).order('name'),
     ])
     setGroups(gcRes.data ?? [])
     setInstructors(inRes.data ?? [])
-    setAllStudents(stRes.data ?? [])
     setLoading(false)
   }, [])
 
@@ -1843,25 +1839,12 @@ function GroupsManage() {
     await load(); setSaving(false); setShowForm(false)
   }
 
-  async function addStudent(groupId: string, studentId: string) {
-    await supabase.from('group_students').insert({ group_id:groupId, student_id:studentId })
-    await load()
-  }
-
-  async function removeStudent(groupId: string, studentId: string) {
-    await supabase.from('group_students').delete().eq('group_id', groupId).eq('student_id', studentId)
-    await load()
-  }
-
   async function deactivateGroup(id: string) {
     await supabase.from('group_classes').update({ is_active:false }).eq('id', id)
     await load()
   }
 
   if (loading) return <Spinner />
-
-  const currentGroup = studentModal ? groups.find((g: any) => g.id === studentModal) : null
-  const currentMembers = new Set<string>(currentGroup?.group_students?.map((gs: any) => gs.student.id) ?? [])
 
   return (
     <div>
@@ -1881,7 +1864,6 @@ function GroupsManage() {
             </div>
             <div style={{ display:'flex', gap:6 }}>
               <button onClick={() => openEditGroup(g)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer' }}>수정</button>
-              <button onClick={() => setStudentModal(g.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer' }}>학생</button>
               <button onClick={() => deactivateGroup(g.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#e07060', borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer' }}>제거</button>
             </div>
           </div>
@@ -1907,28 +1889,6 @@ function GroupsManage() {
             <input type="time" value={form.start_time} onChange={e => setForm(f=>({...f,start_time:e.target.value}))} style={inputStyle} />
           </FormField>
           <SaveButton onClick={saveGroup} loading={saving} />
-        </BottomSheet>
-      )}
-      {studentModal && currentGroup && (
-        <BottomSheet title={`${currentGroup.name} 학생 관리`} onClose={() => setStudentModal(null)}>
-          <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
-            {allStudents.map(s => {
-              const isMember = currentMembers.has(s.id)
-              return (
-                <div key={s.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'9px 0', borderBottom:'1px solid #1e1e20' }}>
-                  <span style={{ fontSize:13, color: isMember ? '#e8e4d8' : '#777' }}>{s.name}</span>
-                  <button onClick={() => isMember ? removeStudent(currentGroup.id, s.id) : addStudent(currentGroup.id, s.id)} style={{
-                    background: isMember ? 'rgba(224,112,96,0.15)' : 'rgba(96,176,128,0.15)',
-                    border: `1px solid ${isMember ? 'rgba(224,112,96,0.4)' : 'rgba(96,176,128,0.4)'}`,
-                    color: isMember ? '#e07060' : '#60b080',
-                    borderRadius:7, padding:'5px 12px', fontSize:12, fontWeight:600, cursor:'pointer',
-                  }}>
-                    {isMember ? '제외' : '추가'}
-                  </button>
-                </div>
-              )
-            })}
-          </div>
         </BottomSheet>
       )}
     </div>

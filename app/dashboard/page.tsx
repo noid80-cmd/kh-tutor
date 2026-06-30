@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import type { Instructor, Student, Assignment, GroupClass, Evaluation, GradeRate, Grade, LessonType } from '@/lib/supabase'
+import * as XLSX from 'xlsx'
+import type { Instructor, Student, Assignment, GroupClass, Evaluation, GradeRate, Grade, LessonType, ClassType } from '@/lib/supabase'
 
 // ── 상수 ──────────────────────────────────────────────────────
 
@@ -11,6 +12,8 @@ const ADMIN_EMAIL = 'noid80@hanmail.net'
 const GRADES: Grade[] = ['S', 'A+', 'A', 'A-', 'B']
 const LESSON_TYPES: LessonType[] = ['전공', '오디션', '부전공', '전문반', '취미', '단체', '댄스']
 const DAYS = ['일', '월', '화', '수', '목', '금', '토']
+const CLASS_TYPES: ClassType[] = ['입시반', '오디션반', '전문반', '취미반']
+const CLASS_TYPE_COLOR: Record<ClassType, string> = { '입시반':'#c06060', '오디션반':'#7060c0', '전문반':'#4080c0', '취미반':'#50a070' }
 const GRADE_COLOR: Record<Grade, string> = { S: '#d4a843', 'A+': '#c0a060', A: '#a88840', 'A-': '#907030', B: '#6a9060' }
 
 const GROUP_CLASS_CATEGORIES: Record<string, string[]> = {
@@ -1446,13 +1449,18 @@ function ManageView() {
 
 // ── 강사 관리 ──────────────────────────────────────────────────
 
+type ImportInstructorRow = { name:string; phone:string; email:string; grade:string; pay_day:string }
+
 function InstructorsManage() {
-  const [instructors, setInstructors] = useState<Instructor[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [showForm, setShowForm]       = useState(false)
-  const [editing, setEditing]         = useState<Instructor | null>(null)
-  const [form, setForm]               = useState({ name:'', phone:'', email:'', grade:'B' as Grade, pay_day: 15 as 15 | 25, resident_number:'', bank_code:'', account_number:'' })
-  const [saving, setSaving]           = useState(false)
+  const [instructors, setInstructors]       = useState<Instructor[]>([])
+  const [loading, setLoading]               = useState(true)
+  const [showForm, setShowForm]             = useState(false)
+  const [editing, setEditing]               = useState<Instructor | null>(null)
+  const [form, setForm]                     = useState({ name:'', phone:'', email:'', grade:'B' as Grade, pay_day: 15 as 15 | 25, resident_number:'', bank_code:'', account_number:'' })
+  const [saving, setSaving]                 = useState(false)
+  const [importRows, setImportRows]         = useState<ImportInstructorRow[] | null>(null)
+  const [importing, setImporting]           = useState(false)
+  const instrFileRef                        = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1490,6 +1498,62 @@ function InstructorsManage() {
     await load()
   }
 
+  function downloadInstructorTemplate() {
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['이름', '연락처', '이메일', '등급', '정산일'],
+      ['홍길동', '010-1234-5678', 'hong@gmail.com', 'B', 25],
+      ['김선생', '010-9876-5432', 'kim@gmail.com', 'A', 15],
+    ])
+    XLSX.utils.book_append_sheet(wb, ws, '강사')
+    const buf = XLSX.write(wb, { type:'array', bookType:'xlsx' })
+    const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href=url; a.download='강사_등록_템플릿.xlsx'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function handleInstructorFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const wb = XLSX.read(ev.target?.result, { type:'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json<Record<string,unknown>>(ws, { defval:'' })
+      const parsed: ImportInstructorRow[] = rows
+        .map(r => ({
+          name: String(r['이름'] ?? '').trim(),
+          phone: String(r['연락처'] ?? '').trim(),
+          email: String(r['이메일'] ?? '').trim(),
+          grade: String(r['등급'] ?? 'B').trim(),
+          pay_day: String(r['정산일'] ?? '25').trim(),
+        }))
+        .filter(r => r.name && r.email)
+      setImportRows(parsed)
+    }
+    reader.readAsArrayBuffer(file)
+    e.target.value = ''
+  }
+
+  async function doInstructorImport() {
+    if (!importRows?.length) return
+    setImporting(true)
+    const validGrades: Grade[] = ['S', 'A+', 'A', 'A-', 'B']
+    const rows = importRows.map(r => ({
+      name: r.name,
+      phone: r.phone || '',
+      email: r.email,
+      grade: (validGrades as string[]).includes(r.grade) ? r.grade as Grade : 'B',
+      pay_day: r.pay_day === '15' ? 15 : 25,
+      is_active: true,
+    }))
+    await supabase.from('instructors').insert(rows)
+    await load()
+    setImporting(false)
+    setImportRows(null)
+  }
+
   async function deleteInstructor(i: Instructor) {
     if (!confirm(`${i.name} 강사를 삭제할까요?`)) return
     await supabase.from('instructors').delete().eq('id', i.id)
@@ -1513,8 +1577,12 @@ function InstructorsManage() {
 
   return (
     <div>
-      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+      <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
         <button onClick={openNew} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 강사 추가</button>
+        <button onClick={() => instrFileRef.current?.click()} style={{ background:'#1e1e22', border:'1px solid #444', color:'#bbb', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:600, cursor:'pointer' }}>엑셀 업로드</button>
+        <button onClick={downloadInstructorTemplate} style={{ background:'#1e1e22', border:'1px solid #333', color:'#666', borderRadius:8, padding:'7px 14px', fontSize:13, cursor:'pointer' }}>템플릿 ↓</button>
+        <input ref={instrFileRef} type="file" accept=".xlsx,.xls" onChange={handleInstructorFile} style={{ display:'none' }} />
+        <span style={{ fontSize:11, color:'#555', marginLeft:2 }}>총 {instructors.length}명</span>
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
         {instructors.map(i => (
@@ -1581,19 +1649,44 @@ function InstructorsManage() {
           <SaveButton onClick={save} loading={saving} />
         </BottomSheet>
       )}
+      {importRows && (
+        <BottomSheet title={`엑셀 업로드 — ${importRows.length}명`} onClose={() => setImportRows(null)}>
+          <div style={{ fontSize:12, color:'#888', marginBottom:8 }}>등급: S/A+/A/A-/B · 정산일: 15 또는 25 · 비밀번호는 등록 후 카드의 '비번' 버튼으로 개별 설정해주세요.</div>
+          <div style={{ maxHeight:300, overflowY:'auto', display:'flex', flexDirection:'column', gap:5 }}>
+            {importRows.map((r, i) => (
+              <div key={i} style={{ background:'#1a1a1c', borderRadius:8, padding:'9px 12px' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                  <span style={{ fontSize:13, fontWeight:700 }}>{r.name}</span>
+                  <span style={{ fontSize:11, color:'#888' }}>{r.grade} · {r.pay_day}일</span>
+                </div>
+                <div style={{ fontSize:11, color:'#666', marginTop:2 }}>{r.email}{r.phone && ` · ${r.phone}`}</div>
+              </div>
+            ))}
+          </div>
+          <button onClick={doInstructorImport} disabled={importing} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'11px', fontSize:14, fontWeight:700, cursor:'pointer', width:'100%', marginTop:8 }}>
+            {importing ? '등록 중...' : `${importRows.length}명 등록하기`}
+          </button>
+        </BottomSheet>
+      )}
     </div>
   )
 }
 
 // ── 학생 관리 ──────────────────────────────────────────────────
 
+type ImportStudentRow = { name: string; phone: string; class_type: string }
+
 function StudentsManage() {
-  const [students, setStudents]   = useState<Student[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [showForm, setShowForm]   = useState(false)
-  const [editing, setEditing]     = useState<Student | null>(null)
-  const [form, setForm]           = useState({ name:'', phone:'' })
-  const [saving, setSaving]       = useState(false)
+  const [students, setStudents]     = useState<Student[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [showForm, setShowForm]     = useState(false)
+  const [editing, setEditing]       = useState<Student | null>(null)
+  const [form, setForm]             = useState({ name:'', phone:'', class_type:'' as ClassType | '' })
+  const [saving, setSaving]         = useState(false)
+  const [filter, setFilter]         = useState<ClassType | '전체'>('전체')
+  const [importRows, setImportRows] = useState<ImportStudentRow[] | null>(null)
+  const [importing, setImporting]   = useState(false)
+  const fileInputRef                = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1604,15 +1697,17 @@ function StudentsManage() {
 
   useEffect(() => { load() }, [load])
 
-  function openNew() { setEditing(null); setForm({ name:'', phone:'' }); setShowForm(true) }
-  function openEdit(s: Student) { setEditing(s); setForm({ name:s.name, phone:s.phone??'' }); setShowForm(true) }
+  function openNew() { setEditing(null); setForm({ name:'', phone:'', class_type:'' }); setShowForm(true) }
+  function openEdit(s: Student) { setEditing(s); setForm({ name:s.name, phone:s.phone??'', class_type:s.class_type??'' }); setShowForm(true) }
 
   async function save() {
+    if (!form.name.trim()) return
     setSaving(true)
+    const payload = { name:form.name, phone:form.phone||null, class_type:form.class_type||null }
     if (editing) {
-      await supabase.from('students').update({ name:form.name, phone:form.phone||null }).eq('id', editing.id)
+      await supabase.from('students').update(payload).eq('id', editing.id)
     } else {
-      await supabase.from('students').insert({ name:form.name, phone:form.phone||null })
+      await supabase.from('students').insert(payload)
     }
     await load(); setSaving(false); setShowForm(false)
   }
@@ -1622,19 +1717,95 @@ function StudentsManage() {
     await load()
   }
 
+  function downloadTemplate() {
+    const wb = XLSX.utils.book_new()
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['이름', '연락처', '반'],
+      ['홍길동', '010-1234-5678', '입시반'],
+      ['김철수', '010-9876-5432', '오디션반'],
+      ['이영희', '010-1111-2222', '전문반'],
+      ['박민준', '010-3333-4444', '취미반'],
+    ])
+    XLSX.utils.book_append_sheet(wb, ws, '학생')
+    const buf = XLSX.write(wb, { type:'array', bookType:'xlsx' })
+    const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href=url; a.download='학생_등록_템플릿.xlsx'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const wb = XLSX.read(ev.target?.result, { type:'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const rows = XLSX.utils.sheet_to_json<Record<string,unknown>>(ws, { defval:'' })
+      const parsed: ImportStudentRow[] = rows
+        .map(r => ({
+          name: String(r['이름'] ?? '').trim(),
+          phone: String(r['연락처'] ?? '').trim(),
+          class_type: String(r['반'] ?? '').trim(),
+        }))
+        .filter(r => r.name)
+      setImportRows(parsed)
+    }
+    reader.readAsArrayBuffer(file)
+    e.target.value = ''
+  }
+
+  async function doImport() {
+    if (!importRows?.length) return
+    setImporting(true)
+    const rows = importRows.map(r => ({
+      name: r.name,
+      phone: r.phone || null,
+      class_type: (CLASS_TYPES as string[]).includes(r.class_type) ? r.class_type as ClassType : null,
+    }))
+    await supabase.from('students').insert(rows)
+    await load()
+    setImporting(false)
+    setImportRows(null)
+  }
+
+  const filtered = filter === '전체' ? students : students.filter(s => s.class_type === filter)
+
   if (loading) return <Spinner />
 
   return (
     <div>
-      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+      <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
         <button onClick={openNew} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 학생 추가</button>
+        <button onClick={() => fileInputRef.current?.click()} style={{ background:'#1e1e22', border:'1px solid #444', color:'#bbb', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:600, cursor:'pointer' }}>엑셀 업로드</button>
+        <button onClick={downloadTemplate} style={{ background:'#1e1e22', border:'1px solid #333', color:'#666', borderRadius:8, padding:'7px 14px', fontSize:13, cursor:'pointer' }}>템플릿 ↓</button>
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleFileChange} style={{ display:'none' }} />
+        <span style={{ fontSize:11, color:'#555', marginLeft:2 }}>총 {students.length}명</span>
+      </div>
+      <div style={{ display:'flex', gap:6, marginBottom:12, overflowX:'auto', paddingBottom:2 }}>
+        {(['전체', ...CLASS_TYPES] as const).map(ct => (
+          <button key={ct} onClick={() => setFilter(ct)} style={{
+            flexShrink:0, padding:'5px 12px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer', border:'none',
+            background: filter===ct ? (ct==='전체' ? '#c0a060' : CLASS_TYPE_COLOR[ct as ClassType]) : '#1e1e22',
+            color: filter===ct ? (ct==='전체' ? '#111' : '#fff') : '#666',
+          }}>
+            {ct}{ct !== '전체' && ` (${students.filter(s=>s.class_type===ct).length})`}
+          </button>
+        ))}
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-        {students.map(s => (
+        {filtered.map(s => (
           <div key={s.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px', display:'flex', alignItems:'center', justifyContent:'space-between', opacity: s.is_active ? 1 : 0.5 }}>
             <div>
-              <div style={{ fontSize:14, fontWeight:700 }}>{s.name}</div>
-              {s.phone && <div style={{ fontSize:11, color:'#666', marginTop:1 }}>{s.phone}</div>}
+              <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                <div style={{ fontSize:14, fontWeight:700 }}>{s.name}</div>
+                {s.class_type && (
+                  <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:6, background:`${CLASS_TYPE_COLOR[s.class_type]}22`, color:CLASS_TYPE_COLOR[s.class_type], border:`1px solid ${CLASS_TYPE_COLOR[s.class_type]}44` }}>
+                    {s.class_type}
+                  </span>
+                )}
+              </div>
+              {s.phone && <div style={{ fontSize:11, color:'#666', marginTop:2 }}>{s.phone}</div>}
             </div>
             <div style={{ display:'flex', gap:7 }}>
               <button onClick={() => openEdit(s)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>수정</button>
@@ -1644,12 +1815,48 @@ function StudentsManage() {
             </div>
           </div>
         ))}
+        {filtered.length === 0 && <div style={{ color:'#555', fontSize:13, textAlign:'center', padding:'30px 0' }}>학생 없음</div>}
       </div>
       {showForm && (
         <BottomSheet title={editing ? '학생 수정' : '학생 추가'} onClose={() => setShowForm(false)}>
           <FormField label="이름 *"><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="학생명" /></FormField>
           <FormField label="연락처"><input value={form.phone} onChange={e => setForm(f=>({...f,phone:e.target.value}))} style={inputStyle} placeholder="010-0000-0000 (선택)" /></FormField>
+          <FormField label="반">
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {CLASS_TYPES.map(ct => (
+                <button key={ct} onClick={() => setForm(f=>({...f,class_type: f.class_type===ct ? '' : ct}))} style={{
+                  padding:'7px 14px', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer',
+                  border:`1px solid ${form.class_type===ct ? CLASS_TYPE_COLOR[ct] : '#333'}`,
+                  background: form.class_type===ct ? `${CLASS_TYPE_COLOR[ct]}22` : '#1a1a1c',
+                  color: form.class_type===ct ? CLASS_TYPE_COLOR[ct] : '#666',
+                }}>{ct}</button>
+              ))}
+            </div>
+          </FormField>
           <SaveButton onClick={save} loading={saving} />
+        </BottomSheet>
+      )}
+      {importRows && (
+        <BottomSheet title={`엑셀 업로드 — ${importRows.length}명`} onClose={() => setImportRows(null)}>
+          <div style={{ fontSize:12, color:'#888', marginBottom:8 }}>반 값이 올바르지 않으면 미분류로 저장돼요. (입시반/오디션반/전문반/취미반)</div>
+          <div style={{ maxHeight:300, overflowY:'auto', display:'flex', flexDirection:'column', gap:5 }}>
+            {importRows.map((r, i) => (
+              <div key={i} style={{ background:'#1a1a1c', borderRadius:8, padding:'9px 12px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div>
+                  <span style={{ fontSize:13, fontWeight:700 }}>{r.name}</span>
+                  {r.phone && <span style={{ fontSize:11, color:'#666', marginLeft:8 }}>{r.phone}</span>}
+                </div>
+                {r.class_type && (
+                  <span style={{ fontSize:11, fontWeight:700, color: (CLASS_TYPES as string[]).includes(r.class_type) ? CLASS_TYPE_COLOR[r.class_type as ClassType] : '#e07060' }}>
+                    {r.class_type}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <button onClick={doImport} disabled={importing} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'11px', fontSize:14, fontWeight:700, cursor:'pointer', width:'100%', marginTop:8 }}>
+            {importing ? '등록 중...' : `${importRows.length}명 등록하기`}
+          </button>
         </BottomSheet>
       )}
     </div>

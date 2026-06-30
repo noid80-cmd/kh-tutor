@@ -24,10 +24,13 @@ export interface Instructor {
   created_at: string
 }
 
+export type ClassType = '입시반' | '오디션반' | '전문반' | '취미반'
+
 export interface Student {
   id: string
   name: string
   phone: string | null
+  class_type: ClassType | null
   is_active: boolean
   created_at: string
 }

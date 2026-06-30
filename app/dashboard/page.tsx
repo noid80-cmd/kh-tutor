@@ -251,6 +251,7 @@ function TodayView({ instructor }: { instructor: Instructor }) {
   const [pendingMakeups, setPendingMakeups] = useState<(Evaluation & { student?: Student })[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editingEval, setEditingEval] = useState<Evaluation | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -274,6 +275,12 @@ function TodayView({ instructor }: { instructor: Instructor }) {
 
   async function completeMakeup(evalId: string) {
     await supabase.from('evaluations').update({ makeup_done: true }).eq('id', evalId)
+    await loadData()
+  }
+
+  async function deleteEval(id: string) {
+    if (!confirm('이 수업 기록을 삭제할까요?')) return
+    await supabase.from('evaluations').delete().eq('id', id)
     await loadData()
   }
 
@@ -324,8 +331,9 @@ function TodayView({ instructor }: { instructor: Instructor }) {
         {evals.map(ev => {
           const sName = (ev as any).student?.name ?? ev.group_name ?? '단체 수업'
           const tStr = ev.start_time ? `${parseInt(ev.start_time)}시` : ''
+          const editable = ev.status === 'submitted'
           return (
-            <div key={ev.id} style={{ background:'#141416', borderRadius:12, border:'1px solid #2a3a2a', overflow:'hidden' }}>
+            <div key={ev.id} style={{ background:'#141416', borderRadius:12, border:`1px solid ${editable ? '#2a2a1e' : '#2a3a2a'}`, overflow:'hidden' }}>
               <div style={{ padding:'14px 16px' }}>
                 <div style={{ fontSize:15, fontWeight:700 }}>{sName}</div>
                 <div style={{ fontSize:11, color:'#888', marginTop:2 }}>
@@ -333,15 +341,25 @@ function TodayView({ instructor }: { instructor: Instructor }) {
                 </div>
               </div>
               <div style={{ borderTop:'1px solid #1e1e20', padding:'10px 16px', background:'#111113' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:5 }}>
-                  <StatusBadge status={ev.status} />
-                  {ev.student_id != null && (
-                    <span style={{ fontSize:11, color: ev.attended ? '#60b080' : '#e07060', fontWeight:700 }}>
-                      {ev.attended ? '출석' : '결석'}
-                    </span>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <StatusBadge status={ev.status} />
+                    {ev.student_id != null && (
+                      <span style={{ fontSize:11, color: ev.attended ? '#60b080' : '#e07060', fontWeight:700 }}>
+                        {ev.attended ? '출석' : '결석'}
+                      </span>
+                    )}
+                  </div>
+                  {editable && (
+                    <div style={{ display:'flex', gap:6 }}>
+                      <button onClick={() => setEditingEval(ev)} style={{ background:'#1e1e2a', border:'1px solid #3a3a5a', color:'#8888cc', borderRadius:6, padding:'3px 10px', fontSize:11, cursor:'pointer' }}>수정</button>
+                      <button onClick={() => deleteEval(ev.id)} style={{ background:'#2a1a1a', border:'1px solid #5a2a2a', color:'#cc6666', borderRadius:6, padding:'3px 10px', fontSize:11, cursor:'pointer' }}>삭제</button>
+                    </div>
                   )}
                 </div>
-                <div style={{ fontSize:12, color:'#aaa', lineHeight:1.6 }}>{ev.content}</div>
+                <div style={{ fontSize:12, color:'#aaa', lineHeight:1.6, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+                  {ev.content}
+                </div>
               </div>
             </div>
           )
@@ -350,6 +368,9 @@ function TodayView({ instructor }: { instructor: Instructor }) {
 
       {showAddModal && (
         <AddEvalModal instructorId={instructor.id} onClose={() => setShowAddModal(false)} onDone={() => { setShowAddModal(false); loadData() }} />
+      )}
+      {editingEval && (
+        <EditEvalModal eval={editingEval} onClose={() => setEditingEval(null)} onDone={() => { setEditingEval(null); loadData() }} />
       )}
     </div>
   )
@@ -396,7 +417,7 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
   async function submit() {
     if (kind === 'individual' && !studentId) { setError('학생을 선택해주세요'); return }
     if (kind === 'group' && !groupName) { setError('수업을 선택해주세요'); return }
-    if (!content.trim()) { setError('수업 내용을 입력해주세요'); return }
+    if (content.trim().length < 50) { setError(`수업 내용을 50자 이상 작성해주세요 (현재 ${content.trim().length}자)`); return }
     setSubmitting(true); setError('')
     const { error: err } = await supabase.from('evaluations').insert({
       instructor_id: instructorId, date, start_time: startTime || null, lesson_type: kind === 'group' ? '단체' : lessonType,
@@ -486,10 +507,14 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
               </select>
             </FormField>
           )}
-          <FormField label="수업 내용 *">
-            <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="오늘 수업에서 다룬 내용" rows={3}
-              style={{ background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
-          </FormField>
+          <div>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:5 }}>
+              <label style={{ fontSize:11, color:'#888' }}>수업 내용 *</label>
+              <span style={{ fontSize:11, color: content.trim().length >= 50 ? '#60b080' : '#888' }}>{content.trim().length}/50자</span>
+            </div>
+            <textarea value={content} onChange={e => setContent(e.target.value)} placeholder="오늘 수업에서 다룬 내용을 50자 이상 작성해주세요" rows={4}
+              style={{ background:'#1a1a1c', border:`1px solid ${content.trim().length >= 50 ? '#3a5a3a' : '#333'}`, color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
+          </div>
           <FormField label="다음 목표">
             <textarea value={nextGoal} onChange={e => setNextGoal(e.target.value)} placeholder="다음 수업 목표 (선택)" rows={2}
               style={{ background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
@@ -503,6 +528,80 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
         </div>
       </div>
     </div>
+  )
+}
+
+// ── 수업 수정 모달 ─────────────────────────────────────────────
+
+function EditEvalModal({ eval: ev, onClose, onDone }: { eval: Evaluation; onClose: () => void; onDone: () => void }) {
+  const [date, setDate] = useState(ev.date)
+  const [startTime, setStartTime] = useState(ev.start_time ?? '')
+  const [attended, setAttended] = useState(ev.attended ?? true)
+  const [content, setContent] = useState(ev.content)
+  const [nextGoal, setNextGoal] = useState(ev.next_goal ?? '')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  const sName = (ev as any).student?.name ?? ev.group_name ?? '단체 수업'
+
+  async function submit() {
+    if (content.trim().length < 50) { setError(`수업 내용을 50자 이상 작성해주세요 (현재 ${content.trim().length}자)`); return }
+    setSubmitting(true); setError('')
+    const { error: err } = await supabase.from('evaluations').update({
+      date, start_time: startTime || null,
+      attended: ev.student_id ? attended : null,
+      content: content.trim(),
+      next_goal: nextGoal.trim() || null,
+    }).eq('id', ev.id)
+    if (err) { setError('저장 실패: ' + err.message); setSubmitting(false); return }
+    onDone()
+  }
+
+  return (
+    <BottomSheet title={`수정 · ${sName}`} onClose={onClose}>
+      <FormField label="날짜">
+        <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} />
+      </FormField>
+      <FormField label="시간">
+        <select value={startTime} onChange={e => setStartTime(e.target.value)} style={selectStyle}>
+          <option value="">-</option>
+          {Array.from({length:14}, (_,i) => i+9).map(h => (
+            <option key={h} value={`${String(h).padStart(2,'0')}:00`}>{h}시</option>
+          ))}
+        </select>
+      </FormField>
+      {ev.student_id != null && (
+        <FormField label="출석">
+          <div style={{ display:'flex', gap:8 }}>
+            {[true, false].map(v => (
+              <button key={String(v)} onClick={() => setAttended(v)} style={{
+                flex:1, padding:'8px', borderRadius:8,
+                border:`1px solid ${attended===v ? (v ? '#60b080' : '#e07060') : '#333'}`,
+                background: attended===v ? (v ? 'rgba(96,176,128,0.15)' : 'rgba(224,112,96,0.15)') : '#1a1a1c',
+                color: attended===v ? (v ? '#60b080' : '#e07060') : '#666',
+                fontSize:13, fontWeight:700, cursor:'pointer',
+              }}>
+                {v ? '출석' : '결석'}
+              </button>
+            ))}
+          </div>
+        </FormField>
+      )}
+      <div>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:5 }}>
+          <label style={{ fontSize:11, color:'#888' }}>수업 내용 *</label>
+          <span style={{ fontSize:11, color: content.trim().length >= 50 ? '#60b080' : '#888' }}>{content.trim().length}/50자</span>
+        </div>
+        <textarea value={content} onChange={e => setContent(e.target.value)} rows={4}
+          style={{ background:'#1a1a1c', border:`1px solid ${content.trim().length >= 50 ? '#3a5a3a' : '#333'}`, color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
+      </div>
+      <FormField label="다음 목표">
+        <textarea value={nextGoal} onChange={e => setNextGoal(e.target.value)} placeholder="다음 수업 목표 (선택)" rows={2}
+          style={{ background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
+      </FormField>
+      {error && <div style={{ color:'#e07060', fontSize:12 }}>{error}</div>}
+      <SaveButton onClick={submit} loading={submitting} />
+    </BottomSheet>
   )
 }
 

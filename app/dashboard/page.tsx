@@ -1664,6 +1664,7 @@ function AssignmentsManage() {
   const [students, setStudents]       = useState<any[]>([])
   const [loading, setLoading]         = useState(true)
   const [showForm, setShowForm]       = useState(false)
+  const [editing, setEditing]         = useState<any>(null)
   const [form, setForm] = useState({ instructor_id:'', student_id:'', lesson_type:'전공' as LessonType, day_of_week:'', start_time:'', enrolled_at:'' })
   const [saving, setSaving] = useState(false)
 
@@ -1682,17 +1683,32 @@ function AssignmentsManage() {
 
   useEffect(() => { load() }, [load])
 
+  function openEdit(a: any) {
+    setEditing(a)
+    setForm({
+      instructor_id: a.instructor_id, student_id: a.student_id, lesson_type: a.lesson_type,
+      day_of_week: a.day_of_week != null ? String(a.day_of_week) : '',
+      start_time: a.start_time ?? '', enrolled_at: a.enrolled_at ?? '',
+    })
+    setShowForm(true)
+  }
+
   async function save() {
     if (!form.instructor_id) { alert('강사를 선택해주세요'); return }
     if (!form.student_id) { alert('학생을 선택해주세요'); return }
     setSaving(true)
-    await supabase.from('assignments').insert({
+    const payload = {
       instructor_id: form.instructor_id, student_id: form.student_id, lesson_type: form.lesson_type,
       day_of_week: form.day_of_week !== '' ? parseInt(form.day_of_week) : null,
-      start_time: form.start_time || null,
-      enrolled_at: form.enrolled_at || null,
-    })
+      start_time: form.start_time || null, enrolled_at: form.enrolled_at || null,
+    }
+    if (editing) {
+      await supabase.from('assignments').update(payload).eq('id', editing.id)
+    } else {
+      await supabase.from('assignments').insert(payload)
+    }
     setForm({ instructor_id:'', student_id:'', lesson_type:'전공', day_of_week:'', start_time:'', enrolled_at:'' })
+    setEditing(null)
     await load(); setSaving(false); setShowForm(false)
   }
 
@@ -1706,7 +1722,7 @@ function AssignmentsManage() {
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
-        <button onClick={() => setShowForm(true)} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 배정 추가</button>
+        <button onClick={() => { setEditing(null); setForm({ instructor_id:'', student_id:'', lesson_type:'전공', day_of_week:'', start_time:'', enrolled_at:'' }); setShowForm(true) }} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 배정 추가</button>
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
         {assignments.map((a: any) => (
@@ -1724,13 +1740,16 @@ function AssignmentsManage() {
                 {a.enrolled_at && <span style={{ marginLeft:6, color:'#555' }}>등록 {a.enrolled_at}</span>}
               </div>
             </div>
-            <button onClick={() => deactivate(a.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#e07060', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>제거</button>
+            <div style={{ display:'flex', gap:6 }}>
+              <button onClick={() => openEdit(a)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>수정</button>
+              <button onClick={() => deactivate(a.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#e07060', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>제거</button>
+            </div>
           </div>
         ))}
         {assignments.length === 0 && <div style={{ color:'#555', fontSize:13, textAlign:'center', padding:'30px 0' }}>배정 없음</div>}
       </div>
       {showForm && (
-        <BottomSheet title="배정 추가" onClose={() => setShowForm(false)}>
+        <BottomSheet title={editing ? '배정 수정' : '배정 추가'} onClose={() => { setShowForm(false); setEditing(null) }}>
           <FormField label="강사 *">
             <select value={form.instructor_id} onChange={e => setForm(f=>({...f,instructor_id:e.target.value}))} style={selectStyle}>
               <option value="">선택</option>
@@ -1775,6 +1794,7 @@ function GroupsManage() {
   const [allStudents, setAllStudents] = useState<any[]>([])
   const [loading, setLoading]         = useState(true)
   const [showForm, setShowForm]       = useState(false)
+  const [editingGroup, setEditingGroup] = useState<any>(null)
   const [form, setForm] = useState({ name:'', instructor_id:'', day_of_week:'', start_time:'' })
   const [saving, setSaving]           = useState(false)
   const [studentModal, setStudentModal] = useState<string | null>(null)
@@ -1794,16 +1814,32 @@ function GroupsManage() {
 
   useEffect(() => { load() }, [load])
 
+  function openEditGroup(g: any) {
+    setEditingGroup(g)
+    setForm({
+      name: g.name, instructor_id: g.instructor_id,
+      day_of_week: g.day_of_week != null ? String(g.day_of_week) : '',
+      start_time: g.start_time ?? '',
+    })
+    setShowForm(true)
+  }
+
   async function saveGroup() {
     if (!form.name.trim()) { alert('수업명을 입력해주세요'); return }
     if (!form.instructor_id) { alert('강사를 선택해주세요'); return }
     setSaving(true)
-    await supabase.from('group_classes').insert({
-      name:form.name, instructor_id:form.instructor_id,
+    const payload = {
+      name: form.name, instructor_id: form.instructor_id,
       day_of_week: form.day_of_week !== '' ? parseInt(form.day_of_week) : null,
       start_time: form.start_time || null,
-    })
+    }
+    if (editingGroup) {
+      await supabase.from('group_classes').update(payload).eq('id', editingGroup.id)
+    } else {
+      await supabase.from('group_classes').insert(payload)
+    }
     setForm({ name:'', instructor_id:'', day_of_week:'', start_time:'' })
+    setEditingGroup(null)
     await load(); setSaving(false); setShowForm(false)
   }
 
@@ -1830,37 +1866,30 @@ function GroupsManage() {
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
-        <button onClick={() => setShowForm(true)} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 단체수업 추가</button>
+        <button onClick={() => { setEditingGroup(null); setForm({ name:'', instructor_id:'', day_of_week:'', start_time:'' }); setShowForm(true) }} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 단체수업 추가</button>
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
         {groups.map((g: any) => (
-          <div key={g.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-              <div>
-                <div style={{ fontSize:14, fontWeight:700 }}>{g.name}</div>
-                <div style={{ fontSize:11, color:'#888', marginTop:1 }}>
-                  [{g.instructor?.grade}] {g.instructor?.name}
-                  {g.day_of_week != null && <span style={{ marginLeft:6 }}>{DAYS[g.day_of_week]}</span>}
-                  {g.start_time && <span style={{ marginLeft:4 }}>{g.start_time.slice(0,5)}</span>}
-                </div>
-              </div>
-              <div style={{ display:'flex', gap:6 }}>
-                <button onClick={() => setStudentModal(g.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer' }}>학생</button>
-                <button onClick={() => deactivateGroup(g.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#e07060', borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer' }}>제거</button>
+          <div key={g.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700 }}>{g.name}</div>
+              <div style={{ fontSize:11, color:'#888', marginTop:1 }}>
+                [{g.instructor?.grade}] {g.instructor?.name}
+                {g.day_of_week != null && <span style={{ marginLeft:6 }}>{DAYS[g.day_of_week]}</span>}
+                {g.start_time && <span style={{ marginLeft:4 }}>{g.start_time.slice(0,5)}</span>}
               </div>
             </div>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
-              {g.group_students?.map((gs: any) => (
-                <span key={gs.student.id} style={{ background:'#1e1e20', border:'1px solid #333', borderRadius:6, padding:'2px 8px', fontSize:11, color:'#bbb' }}>{gs.student.name}</span>
-              ))}
-              {(!g.group_students || g.group_students.length === 0) && <span style={{ fontSize:11, color:'#555' }}>학생 없음</span>}
+            <div style={{ display:'flex', gap:6 }}>
+              <button onClick={() => openEditGroup(g)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer' }}>수정</button>
+              <button onClick={() => setStudentModal(g.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#aaa', borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer' }}>학생</button>
+              <button onClick={() => deactivateGroup(g.id)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#e07060', borderRadius:7, padding:'5px 10px', fontSize:11, cursor:'pointer' }}>제거</button>
             </div>
           </div>
         ))}
         {groups.length === 0 && <div style={{ color:'#555', fontSize:13, textAlign:'center', padding:'30px 0' }}>단체수업 없음</div>}
       </div>
       {showForm && (
-        <BottomSheet title="단체수업 추가" onClose={() => setShowForm(false)}>
+        <BottomSheet title={editingGroup ? '단체수업 수정' : '단체수업 추가'} onClose={() => { setShowForm(false); setEditingGroup(null) }}>
           <FormField label="수업명 *"><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="예: 초등 앙상블" /></FormField>
           <FormField label="강사 *">
             <select value={form.instructor_id} onChange={e => setForm(f=>({...f,instructor_id:e.target.value}))} style={selectStyle}>

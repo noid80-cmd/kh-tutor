@@ -53,7 +53,7 @@ export default function LoginPage() {
         <div className="flex flex-col items-center" style={{ marginBottom: 48 }}>
           <div className="rounded-3xl mb-5 flex items-center justify-center"
             style={{ width: 96, height: 96, background: 'linear-gradient(145deg, #d4942a, #7a5010)', boxShadow: '0 20px 56px rgba(212,148,42,0.4)' }}>
-            <span style={{ color: '#0e0c08', fontWeight: 900, fontSize: 56, fontFamily: "'Cinzel', serif", lineHeight: 1, marginTop: 4 }}>K</span>
+            <span style={{ color: '#3a2000', fontWeight: 900, fontSize: 56, fontFamily: "'Cinzel', serif", lineHeight: 1, marginTop: 4 }}>K</span>
           </div>
           <h1 style={{ color: '#fff', fontSize: 28, fontWeight: 900, letterSpacing: -0.5, margin: 0 }}>KH Tutor</h1>
         </div>

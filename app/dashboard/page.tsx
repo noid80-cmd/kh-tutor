@@ -11,7 +11,7 @@ const ADMIN_EMAIL = 'noid80@hanmail.net'
 const GRADES: Grade[] = ['S', 'A+', 'A', 'A-', 'B']
 const LESSON_TYPES: LessonType[] = ['전공', '오디션', '부전공', '전문반', '취미', '단체', '댄스']
 const DAYS = ['일', '월', '화', '수', '목', '금', '토']
-const GRADE_COLOR: Record<Grade, string> = { S: '#c0a060', 'A+': '#8878e8', A: '#7090e0', 'A-': '#6098d8', B: '#60b080' }
+const GRADE_COLOR: Record<Grade, string> = { S: '#d4a843', 'A+': '#c0a060', A: '#a88840', 'A-': '#907030', B: '#6a9060' }
 
 const GROUP_CLASS_CATEGORIES: Record<string, string[]> = {
   '이론': ['음악통론', '재즈화성학', '전통화성학', '리듬트레이닝', '시창청음', '코드청음', '음향이론'],
@@ -392,8 +392,8 @@ function TodayView({ instructor }: { instructor: Instructor }) {
 
       {/* 보강 대기 */}
       {pendingMakeups.length > 0 && (
-        <div style={{ background:'rgba(136,120,232,0.08)', border:'1px solid rgba(136,120,232,0.25)', borderRadius:10, padding:'12px 14px', marginBottom:16 }}>
-          <div style={{ fontSize:12, fontWeight:800, color:'#8878e8', marginBottom:8 }}>보강 대기 ({pendingMakeups.length})</div>
+        <div style={{ background:'rgba(192,160,96,0.08)', border:'1px solid rgba(192,160,96,0.25)', borderRadius:10, padding:'12px 14px', marginBottom:16 }}>
+          <div style={{ fontSize:12, fontWeight:800, color:'#c0a060', marginBottom:8 }}>보강 대기 ({pendingMakeups.length})</div>
           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
             {pendingMakeups.map(ev => (
               <div key={ev.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>

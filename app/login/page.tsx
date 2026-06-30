@@ -31,19 +31,19 @@ export default function LoginPage() {
   }
 
   const inputStyle = {
-    width: '100%', background: 'rgba(255,255,255,0.07)',
-    border: '1px solid rgba(255,255,255,0.12)',
+    width: '100%', background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(212,168,67,0.2)',
     borderRadius: 16, padding: '16px 20px',
     fontSize: 16, outline: 'none', color: '#fff', colorScheme: 'dark' as const,
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6" style={{ background: '#0c0c12' }}>
+    <div className="min-h-screen flex items-center justify-center px-6" style={{ background: '#0c0b08' }}>
       <div className="fixed inset-0 pointer-events-none">
         <div style={{
           position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -60%)',
           width: '600px', height: '600px', borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(99,102,241,0.10) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(212,168,67,0.10) 0%, transparent 70%)',
         }} />
       </div>
 
@@ -51,18 +51,18 @@ export default function LoginPage() {
         {/* 로고 */}
         <div className="flex flex-col items-center" style={{ marginBottom: 40 }}>
           <div className="w-20 h-20 rounded-3xl mb-6 flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', boxShadow: '0 16px 48px rgba(99,102,241,0.3)' }}>
-            <span className="text-white font-black text-2xl">KH</span>
+            style={{ background: 'linear-gradient(145deg, #d4942a, #7a5010)', boxShadow: '0 16px 48px rgba(212,148,42,0.35)' }}>
+            <span style={{ color: '#0e0c08', fontWeight: 900, fontSize: 28, fontFamily: 'Georgia, serif' }}>K</span>
           </div>
           <h1 className="text-3xl font-black text-white tracking-tight mb-2">KH Tutor</h1>
-          <p className="text-white/35 text-sm">KH Music & Studio</p>
+          <p style={{ color: 'rgba(212,168,67,0.5)', fontSize: 13 }}>KH Music & Studio</p>
         </div>
 
         <div className="w-full flex flex-col" style={{ gap: 12 }}>
           {/* Google 로그인 */}
           <button onClick={handleGoogle}
             className="w-full flex items-center justify-center gap-3 font-bold rounded-2xl transition active:scale-95"
-            style={{ background: '#fff', color: '#111', fontSize: 16, minHeight: 56, padding: '0 20px' }}>
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: 16, minHeight: 56, padding: '0 20px' }}>
             <svg width="22" height="22" viewBox="0 0 48 48">
               <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.9z"/>
               <path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.5 15.8 18.9 12 24 12c3.1 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
@@ -74,9 +74,9 @@ export default function LoginPage() {
 
           {/* 구분선 */}
           <div className="flex items-center gap-4" style={{ margin: '8px 0' }}>
-            <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
-            <span style={{ color: 'rgba(255,255,255,0.22)', fontSize: 12, fontWeight: 600 }}>이메일로 로그인</span>
-            <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
+            <div className="flex-1 h-px" style={{ background: 'rgba(212,168,67,0.15)' }} />
+            <span style={{ color: 'rgba(212,168,67,0.4)', fontSize: 12, fontWeight: 600 }}>이메일로 로그인</span>
+            <div className="flex-1 h-px" style={{ background: 'rgba(212,168,67,0.15)' }} />
           </div>
 
           {/* 이메일 */}
@@ -85,8 +85,8 @@ export default function LoginPage() {
               placeholder="이메일" required style={inputStyle} />
             {error && <p style={{ color: '#f87171', fontSize: 13, textAlign: 'center' }}>{error}</p>}
             <button type="submit" disabled={loading}
-              className="w-full rounded-2xl text-white font-bold disabled:opacity-50 transition active:scale-95"
-              style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', fontSize: 16, minHeight: 56 }}>
+              className="w-full rounded-2xl font-bold disabled:opacity-50 transition active:scale-95"
+              style={{ background: 'linear-gradient(135deg, #d4942a, #c8a030)', color: '#0e0c08', fontSize: 16, minHeight: 56, boxShadow: '0 8px 24px rgba(212,148,42,0.3)' }}>
               {loading ? '로그인 중...' : '로그인'}
             </button>
           </form>

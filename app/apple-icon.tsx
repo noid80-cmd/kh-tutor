@@ -5,7 +5,7 @@ export const contentType = 'image/png'
 
 async function loadFont() {
   const css = await fetch(
-    'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@900',
+    'https://fonts.googleapis.com/css2?family=Cinzel:wght@900',
     { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' } }
   ).then(r => r.text())
   const url = css.match(/src: url\((.+?)\) format/)?.[1]
@@ -24,16 +24,17 @@ export default async function AppleIcon() {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <div style={{
-          fontSize: 138, fontWeight: 900, color: '#0e0c08',
-          fontFamily: 'Playfair Display, serif',
+          fontSize: 140, fontWeight: 900, color: '#0e0c08',
+          fontFamily: 'Cinzel, serif',
           display: 'flex',
-          marginTop: -6,
+          lineHeight: 1,
+          marginTop: -10,
         }}>K</div>
       </div>
     ),
     {
       ...size,
-      fonts: fontData ? [{ name: 'Playfair Display', data: fontData, style: 'normal' as const, weight: 900 }] : [],
+      fonts: fontData ? [{ name: 'Cinzel', data: fontData, style: 'normal' as const, weight: 900 }] : [],
     }
   )
 }

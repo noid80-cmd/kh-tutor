@@ -171,7 +171,7 @@ export default function Dashboard() {
 
   const instructorTabs = [
     { id:'today',    label:'오늘 수업' },
-    { id:'evals',    label:'평가서' },
+    { id:'monthly',  label:'이번달' },
     { id:'students', label:'내 학생' },
   ]
   const adminTabs = [
@@ -205,7 +205,7 @@ export default function Dashboard() {
         {!isAdmin && instructor && (
           <>
             {tab === 'today'    && <TodayView    instructor={instructor} />}
-            {tab === 'evals'    && <EvalsView    instructor={instructor} />}
+            {tab === 'monthly'  && <MonthlyView  instructor={instructor} />}
             {tab === 'students' && <StudentsView instructor={instructor} />}
           </>
         )}
@@ -413,8 +413,7 @@ function TodayView({ instructor }: { instructor: Instructor }) {
 
       {items.length === 0 && (
         <div style={{ textAlign:'center', color:'#555', padding:'40px 0', fontSize:13 }}>
-          오늘 정규 스케줄이 없어요
-          <div style={{ marginTop:8, fontSize:12, color:'#444' }}>추가 버튼으로 수업을 기록할 수 있어요</div>
+          오늘 진행한 수업을 추가해주세요
         </div>
       )}
 
@@ -476,9 +475,7 @@ function TodayView({ instructor }: { instructor: Instructor }) {
                       {reschedulingId === item.assignment.id ? '...' : '변경'}
                     </button>
                   )}
-                  {evalDone ? (
-                    <StatusBadge status={evalDone.status} />
-                  ) : (
+                  {!evalDone && (
                     <button onClick={() => openForm(item)} style={{
                       background: isExpanded ? '#1e2a1e' : '#1a1a1c',
                       border: `1px solid ${isExpanded ? '#60b080' : '#333'}`,
@@ -490,6 +487,22 @@ function TodayView({ instructor }: { instructor: Instructor }) {
                   )}
                 </div>
               </div>
+
+              {evalDone && (
+                <div style={{ borderTop:'1px solid #1e1e20', padding:'10px 16px', background:'#111113' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:5 }}>
+                    <StatusBadge status={evalDone.status} />
+                    {evalDone.student_id != null && (
+                      <span style={{ fontSize:11, color: evalDone.attended ? '#60b080' : '#e07060', fontWeight:700 }}>
+                        {evalDone.attended ? '출석' : '결석'}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize:12, color:'#aaa', lineHeight:1.6, display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden' }}>
+                    {evalDone.content}
+                  </div>
+                </div>
+              )}
 
               {isExpanded && form && (
                 <div style={{ borderTop:'1px solid #222', padding:'14px 16px', display:'flex', flexDirection:'column', gap:12 }}>
@@ -717,46 +730,119 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
   )
 }
 
-// ── 강사: 평가서 목록 ─────────────────────────────────────────
+// ── 강사: 이번달 수업 기록 ────────────────────────────────────
 
-function EvalsView({ instructor }: { instructor: Instructor }) {
-  const [evals, setEvals] = useState<(Evaluation & { student?: Student; group?: GroupClass })[]>([])
+function MonthlyView({ instructor }: { instructor: Instructor }) {
+  const [monthOffset, setMonthOffset] = useState(0)
+  const [evals, setEvals] = useState<(Evaluation & { student?: Student })[]>([])
   const [loading, setLoading] = useState(true)
+  const [selectedEval, setSelectedEval] = useState<(Evaluation & { student?: Student }) | null>(null)
 
   useEffect(() => {
+    setLoading(true)
+    const base = new Date()
+    const y = base.getFullYear()
+    const m = base.getMonth() + monthOffset
+    const fd = localDateStr(new Date(y, m, 1))
+    const ld = localDateStr(new Date(y, m + 1, 0))
     supabase.from('evaluations')
-      .select('*, student:students(name), group:group_classes(name)')
+      .select('*, student:students(name)')
       .eq('instructor_id', instructor.id)
-      .order('date', { ascending:false })
-      .limit(60)
+      .gte('date', fd)
+      .lte('date', ld)
+      .order('date', { ascending: true })
       .then(({ data }) => { setEvals(data ?? []); setLoading(false) })
-  }, [instructor.id])
+  }, [instructor.id, monthOffset])
 
-  if (loading) return <Spinner />
+  const base = new Date()
+  const labelDate = new Date(base.getFullYear(), base.getMonth() + monthOffset, 1)
+  const monthLabel = `${labelDate.getFullYear()}년 ${labelDate.getMonth() + 1}월`
+
+  type EvalRow = Evaluation & { student?: Student }
+  type EvalGroup = { label: string; lessonType: string; items: EvalRow[] }
+  const groupMap = new Map<string, EvalGroup>()
+  const groupOrder: string[] = []
+  for (const ev of evals) {
+    const key = ev.student_id ? `${ev.student_id}_${ev.lesson_type}` : `g_${ev.group_name ?? ev.group_id ?? 'etc'}`
+    if (!groupMap.has(key)) {
+      groupOrder.push(key)
+      groupMap.set(key, { label: (ev.student as any)?.name ?? ev.group_name ?? '단체수업', lessonType: ev.lesson_type, items: [] })
+    }
+    groupMap.get(key)!.items.push(ev)
+  }
+
+  const navBtn: React.CSSProperties = { background:'#1a1a1c', border:'1px solid #333', color:'#888', borderRadius:8, padding:'7px 18px', fontSize:20, cursor:'pointer', lineHeight:1 }
 
   return (
     <div style={{ padding:'18px 16px' }}>
-      <div style={{ fontSize:18, fontWeight:800, marginBottom:16 }}>평가서 목록</div>
-      {evals.length === 0 && <div style={{ textAlign:'center', color:'#555', padding:'40px 0', fontSize:13 }}>아직 작성한 평가서가 없어요</div>}
-      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-        {evals.map(ev => (
-          <div key={ev.id} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <span style={{ fontSize:14, fontWeight:700 }}>{(ev.student as any)?.name ?? ev.group_name ?? (ev.group as any)?.name}</span>
-                <span style={{ fontSize:10, color:'#888', background:'#1e1e20', padding:'2px 6px', borderRadius:4 }}>{ev.lesson_type}</span>
-              </div>
-              <StatusBadge status={ev.status} />
-            </div>
-            <div style={{ fontSize:11, color:'#666', marginBottom:6 }}>
-              {ev.date}
-              {ev.student_id && <span style={{ marginLeft:8, color: ev.attended ? '#60b080' : '#e07060' }}>{ev.attended ? '출석' : '결석'}</span>}
-            </div>
-            <div style={{ fontSize:12, color:'#aaa', lineHeight:1.5 }}>{ev.content}</div>
-            {ev.next_goal && <div style={{ fontSize:11, color:'#888', marginTop:5 }}>다음: {ev.next_goal}</div>}
-          </div>
-        ))}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+        <button onClick={() => setMonthOffset(o => o - 1)} style={navBtn}>‹</button>
+        <div style={{ fontSize:17, fontWeight:800 }}>{monthLabel}</div>
+        <button onClick={() => setMonthOffset(o => o + 1)} style={navBtn}>›</button>
       </div>
+
+      {loading ? <Spinner /> : groupOrder.length === 0 ? (
+        <div style={{ textAlign:'center', color:'#555', padding:'40px 0', fontSize:13 }}>이달 작성된 수업 기록이 없어요</div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          {groupOrder.map(key => {
+            const g = groupMap.get(key)!
+            const allApproved = g.items.every(e => e.status === 'approved')
+            return (
+              <div key={key} style={{ background:'#141416', borderRadius:12, border:`1px solid ${allApproved ? '#2a3a2a' : '#222'}`, padding:'14px 16px' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:15, fontWeight:700 }}>{g.label}</span>
+                    <span style={{ fontSize:10, color:'#888', background:'#1e1e20', padding:'2px 6px', borderRadius:4 }}>{g.lessonType}</span>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    {allApproved && <span style={{ fontSize:10, fontWeight:700, color:'#60b080' }}>✓ 전체승인</span>}
+                    <span style={{ fontSize:12, color:'#c0a060', fontWeight:700 }}>{g.items.length}회</span>
+                  </div>
+                </div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                  {g.items.map(ev => {
+                    const d = new Date(ev.date + 'T00:00:00')
+                    const approved = ev.status === 'approved'
+                    const absent = ev.student_id != null && !ev.attended
+                    return (
+                      <button key={ev.id} onClick={() => setSelectedEval(selectedEval?.id === ev.id ? null : ev)} style={{
+                        background: approved ? 'rgba(96,176,128,0.15)' : absent ? 'rgba(224,112,96,0.1)' : 'rgba(192,160,96,0.1)',
+                        border: `1px solid ${approved ? 'rgba(96,176,128,0.5)' : absent ? 'rgba(224,112,96,0.4)' : 'rgba(192,160,96,0.3)'}`,
+                        color: approved ? '#60b080' : absent ? '#e07060' : '#c0a060',
+                        borderRadius:8, padding:'5px 11px', fontSize:13, fontWeight:700, cursor:'pointer',
+                      }}>
+                        {d.getMonth() + 1}/{d.getDate()}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {selectedEval && (
+        <BottomSheet
+          title={`${(selectedEval.student as any)?.name ?? (selectedEval as any).group_name ?? '단체'} · ${selectedEval.date}`}
+          onClose={() => setSelectedEval(null)}
+        >
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <StatusBadge status={selectedEval.status} />
+            <span style={{ fontSize:11, color:'#888', background:'#1e1e20', padding:'2px 6px', borderRadius:4 }}>{selectedEval.lesson_type}</span>
+            {selectedEval.student_id != null && (
+              <span style={{ fontSize:12, fontWeight:700, color: selectedEval.attended ? '#60b080' : '#e07060' }}>
+                {selectedEval.attended ? '출석' : '결석'}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize:13, color:'#e8e4d8', lineHeight:1.7, whiteSpace:'pre-wrap' }}>{selectedEval.content}</div>
+          {selectedEval.next_goal && (
+            <div style={{ fontSize:12, color:'#888', borderTop:'1px solid #222', paddingTop:8 }}>다음: {selectedEval.next_goal}</div>
+          )}
+        </BottomSheet>
+      )}
     </div>
   )
 }

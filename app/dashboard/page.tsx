@@ -134,8 +134,7 @@ export default function Dashboard() {
   const [tab, setTab] = useState<string>('today')
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!session) { router.push('/login'); return }
+    async function initUser(session: { user: { id: string; email?: string | null } }) {
       const user = session.user
       const admin = user.email === ADMIN_EMAIL
       setIsAdmin(admin)
@@ -156,7 +155,17 @@ export default function Dashboard() {
         setTab('approve')
       }
       setLoading(false)
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        if (!session) { router.push('/login'); return }
+        initUser(session)
+      } else if (event === 'SIGNED_OUT') {
+        router.push('/login')
+      }
     })
+    return () => subscription.unsubscribe()
   }, [router])
 
   const handleLogout = async () => {

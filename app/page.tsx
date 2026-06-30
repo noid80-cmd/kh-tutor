@@ -5,10 +5,12 @@ import { supabase } from '@/lib/supabase'
 
 export default function Home() {
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) { window.location.href = '/login'; return }
-      window.location.href = '/dashboard'
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION') {
+        window.location.href = session ? '/dashboard' : '/login'
+      }
     })
+    return () => subscription.unsubscribe()
   }, [])
   return null
 }

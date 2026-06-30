@@ -39,6 +39,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6" style={{ background: '#0c0b08' }}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@900&display=swap');`}</style>
       <div className="fixed inset-0 pointer-events-none">
         <div style={{
           position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -60%)',
@@ -52,7 +53,7 @@ export default function LoginPage() {
         <div className="flex flex-col items-center" style={{ marginBottom: 48 }}>
           <div className="rounded-3xl mb-5 flex items-center justify-center"
             style={{ width: 96, height: 96, background: 'linear-gradient(145deg, #d4942a, #7a5010)', boxShadow: '0 20px 56px rgba(212,148,42,0.4)' }}>
-            <span style={{ color: '#0e0c08', fontWeight: 900, fontSize: 56, fontFamily: 'Georgia, serif', lineHeight: 1, marginTop: 4 }}>K</span>
+            <span style={{ color: '#0e0c08', fontWeight: 900, fontSize: 56, fontFamily: "'Cinzel', serif", lineHeight: 1, marginTop: 4 }}>K</span>
           </div>
           <h1 style={{ color: '#fff', fontSize: 28, fontWeight: 900, letterSpacing: -0.5, margin: 0 }}>KH Tutor</h1>
         </div>

@@ -913,7 +913,7 @@ interface InstructorPayroll {
 function printPayslip(p: InstructorPayroll, range: { start: string; end: string; payLabel: string }, ex: InstructorExtra) {
   const w = window.open('', '_blank')
   if (!w) return
-  const eff_before = p.total_before + ex.bonus
+  const eff_before = p.total_before + ex.bonus - ex.deduction
   const eff_tax    = Math.round(eff_before * 0.033)
   const eff_after  = eff_before - eff_tax + ex.parking
   const rows = p.lines.map(l => `
@@ -924,8 +924,9 @@ function printPayslip(p: InstructorPayroll, range: { start: string; end: string;
       <td style="text-align:right">${l.subtotal.toLocaleString()}원</td>
     </tr>`).join('')
   const extraRows = [
-    ex.bonus   > 0 ? `<tr><td>추가수당${ex.bonusNote ? ` (${ex.bonusNote})` : ''}(세전)</td><td style="text-align:center">-</td><td style="text-align:right">-</td><td style="text-align:right">${ex.bonus.toLocaleString()}원</td></tr>` : '',
-    ex.parking > 0 ? `<tr><td>주차료(세금없음)</td><td style="text-align:center">-</td><td style="text-align:right">-</td><td style="text-align:right">${ex.parking.toLocaleString()}원</td></tr>` : '',
+    ex.bonus      > 0 ? `<tr><td>추가수당${ex.bonusNote ? ` (${ex.bonusNote})` : ''}(세전)</td><td style="text-align:center">-</td><td style="text-align:right">-</td><td style="text-align:right">+${ex.bonus.toLocaleString()}원</td></tr>` : '',
+    ex.deduction  > 0 ? `<tr style="color:#c0392b"><td>공제${ex.deductionNote ? ` (${ex.deductionNote})` : ''}(세전)</td><td style="text-align:center">-</td><td style="text-align:right">-</td><td style="text-align:right">-${ex.deduction.toLocaleString()}원</td></tr>` : '',
+    ex.parking    > 0 ? `<tr><td>주차료(세금없음)</td><td style="text-align:center">-</td><td style="text-align:right">-</td><td style="text-align:right">+${ex.parking.toLocaleString()}원</td></tr>` : '',
   ].join('')
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>강의료 명세서</title>
   <style>
@@ -966,7 +967,7 @@ function printPayslip(p: InstructorPayroll, range: { start: string; end: string;
   w.document.close()
 }
 
-function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEmail, extras, setExtra, setBonusNote }: {
+function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEmail, extras, setExtra, setBonusNote, setDeductionNote }: {
   title: string
   payrolls: InstructorPayroll[]
   range: { start: string; end: string; payLabel: string }
@@ -974,8 +975,9 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
   setExpanded: (id: string | null) => void
   userEmail: string
   extras: Record<string, InstructorExtra>
-  setExtra: (id: string, field: 'parking' | 'bonus', val: number) => void
+  setExtra: (id: string, field: 'parking' | 'bonus' | 'deduction', val: number) => void
   setBonusNote: (id: string, val: string) => void
+  setDeductionNote: (id: string, val: string) => void
 }) {
   const [emailingIds, setEmailingIds] = useState<Set<string>>(new Set())
   const [emailedIds, setEmailedIds]   = useState<Set<string>>(new Set())
@@ -1077,7 +1079,7 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
                       <span style={{ fontSize:12, fontWeight:600 }}>{fmt만원(l.subtotal)}</span>
                     </div>
                   ))}
-                  {/* 추가 지급 입력 */}
+                  {/* 추가 지급 / 공제 입력 */}
                   <div style={{ borderTop:'1px solid #1e1e22', marginTop:10, paddingTop:10 }}>
                     <div style={{ fontSize:11, color:'#666', fontWeight:700, marginBottom:8 }}>추가 지급</div>
                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
@@ -1106,10 +1108,34 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
                       </div>
                     )}
                   </div>
-                  <div style={{ borderTop:'1px solid #222', marginTop:2, paddingTop:8 }}>
+                  <div style={{ borderTop:'1px solid #1e1e22', marginTop:2, paddingTop:10, marginBottom:10 }}>
+                    <div style={{ fontSize:11, color:'#e07060', fontWeight:700, marginBottom:8 }}>공제</div>
+                    <div>
+                      <label style={{ fontSize:10, color:'#666', display:'block', marginBottom:3 }}>공제 금액 (세전 차감)</label>
+                      <input type="number" min={0} value={ex.deduction || ''} placeholder="0"
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => setExtra(p.instructor.id, 'deduction', +e.target.value || 0)}
+                        style={{ ...extraInputStyle, border:'1px solid #3a2222' }} />
+                    </div>
+                    {ex.deduction > 0 && (
+                      <div style={{ marginTop:8 }}>
+                        <label style={{ fontSize:10, color:'#666', display:'block', marginBottom:3 }}>공제 사유 (예: 지각, 당일결석, 변경횟수 초과)</label>
+                        <input type="text" value={ex.deductionNote || ''} placeholder="사유 입력"
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setDeductionNote(p.instructor.id, e.target.value)}
+                          style={{ ...extraInputStyle, border:'1px solid #3a2222' }} />
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ borderTop:'1px solid #222', paddingTop:8 }}>
                     <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#888', marginBottom:3 }}>
                       <span>세전</span><span>{fmt만원(eff_before)}</span>
                     </div>
+                    {ex.deduction > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#e07060', marginBottom:3 }}>
+                        <span>공제{ex.deductionNote ? ` (${ex.deductionNote})` : ''}</span><span>-{fmt만원(ex.deduction)}</span>
+                      </div>
+                    )}
                     <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, color:'#e07060', marginBottom:3 }}>
                       <span>원천징수(3.3%)</span><span>-{fmt만원(eff_tax)}</span>
                     </div>
@@ -1132,11 +1158,11 @@ function PayrollSection({ title, payrolls, range, expanded, setExpanded, userEma
   )
 }
 
-interface InstructorExtra { parking: number; bonus: number; bonusNote: string }
+interface InstructorExtra { parking: number; bonus: number; bonusNote: string; deduction: number; deductionNote: string }
 interface MasterClass { id: string; name: string; net: number }
 
 function getEffective(p: InstructorPayroll, ex: InstructorExtra) {
-  const total_before = p.total_before + ex.bonus
+  const total_before = p.total_before + ex.bonus - ex.deduction
   const tax = Math.round(total_before * 0.033)
   const total_after = total_before - tax + ex.parking
   return { total_before, tax, total_after }
@@ -1219,11 +1245,15 @@ function PayrollView({ userEmail }: { userEmail: string }) {
   const [extras, setExtras]         = useState<Record<string, InstructorExtra>>({})
   const [masterClasses, setMasterClasses] = useState<MasterClass[]>([])
 
-  function setExtra(id: string, field: 'parking' | 'bonus', val: number) {
-    setExtras(prev => ({ ...prev, [id]: { ...(prev[id] ?? { parking:0, bonus:0, bonusNote:'' }), [field]: val } }))
+  const defaultExtra: InstructorExtra = { parking:0, bonus:0, bonusNote:'', deduction:0, deductionNote:'' }
+  function setExtra(id: string, field: 'parking' | 'bonus' | 'deduction', val: number) {
+    setExtras(prev => ({ ...prev, [id]: { ...(prev[id] ?? defaultExtra), [field]: val } }))
   }
   function setBonusNote(id: string, val: string) {
-    setExtras(prev => ({ ...prev, [id]: { ...(prev[id] ?? { parking:0, bonus:0, bonusNote:'' }), bonusNote: val } }))
+    setExtras(prev => ({ ...prev, [id]: { ...(prev[id] ?? defaultExtra), bonusNote: val } }))
+  }
+  function setDeductionNote(id: string, val: string) {
+    setExtras(prev => ({ ...prev, [id]: { ...(prev[id] ?? defaultExtra), deductionNote: val } }))
   }
   function addMC() {
     setMasterClasses(prev => [...prev, { id: crypto.randomUUID(), name:'', net:0 }])
@@ -1317,8 +1347,8 @@ function PayrollView({ userEmail }: { userEmail: string }) {
 
       {calculated && (
         <>
-          <PayrollSection title="15일 지급" payrolls={payrolls15} range={range15} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} extras={extras} setExtra={setExtra} setBonusNote={setBonusNote} />
-          <PayrollSection title="25일 지급" payrolls={payrolls25} range={range25} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} extras={extras} setExtra={setExtra} setBonusNote={setBonusNote} />
+          <PayrollSection title="15일 지급" payrolls={payrolls15} range={range15} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} extras={extras} setExtra={setExtra} setBonusNote={setBonusNote} setDeductionNote={setDeductionNote} />
+          <PayrollSection title="25일 지급" payrolls={payrolls25} range={range25} expanded={expanded} setExpanded={setExpanded} userEmail={userEmail} extras={extras} setExtra={setExtra} setBonusNote={setBonusNote} setDeductionNote={setDeductionNote} />
           {payrolls15.length === 0 && payrolls25.length === 0 && (
             <div style={{ textAlign:'center', color:'#555', padding:'30px 0', fontSize:13 }}>해당 기간에 승인된 수업이 없어요</div>
           )}

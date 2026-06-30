@@ -513,9 +513,14 @@ function TodayView({ instructor }: { instructor: Instructor }) {
                       <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>날짜</label>
                       <input type="date" value={form.date} onChange={e => setForm(f => f && ({ ...f, date:e.target.value }))} style={inputStyle} />
                     </div>
-                    <div style={{ width:110 }}>
+                    <div style={{ width:90 }}>
                       <label style={{ fontSize:11, color:'#888', display:'block', marginBottom:4 }}>시간</label>
-                      <input type="time" value={form.start_time} onChange={e => setForm(f => f && ({ ...f, start_time:e.target.value }))} style={inputStyle} />
+                      <select value={form.start_time} onChange={e => setForm(f => f && ({ ...f, start_time:e.target.value }))} style={inputStyle}>
+                        <option value="">-</option>
+                        {Array.from({length:14}, (_,i) => i+9).map(h => (
+                          <option key={h} value={`${String(h).padStart(2,'0')}:00`}>{h}시</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   {form.student_id && (
@@ -674,9 +679,14 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
                 <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputStyle} />
               </FormField>
             </div>
-            <div style={{ width:110 }}>
+            <div style={{ width:90 }}>
               <FormField label="시간">
-                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={inputStyle} />
+                <select value={startTime} onChange={e => setStartTime(e.target.value)} style={selectStyle}>
+                  <option value="">-</option>
+                  {Array.from({length:14}, (_,i) => i+9).map(h => (
+                    <option key={h} value={`${String(h).padStart(2,'0')}:00`}>{h}시</option>
+                  ))}
+                </select>
               </FormField>
             </div>
           </div>
@@ -823,15 +833,16 @@ function MonthlyView({ instructor }: { instructor: Instructor }) {
                     const d = new Date(ev.date + 'T00:00:00')
                     const approved = ev.status === 'approved'
                     const absent = ev.student_id != null && !ev.attended
-                    const timeLabel = ev.start_time ? ` ${ev.start_time.slice(0,5)}` : ''
+                    const color = approved ? '#60b080' : absent ? '#e07060' : '#c0a060'
                     return (
                       <button key={ev.id} onClick={() => setSelectedEval(selectedEval?.id === ev.id ? null : ev)} style={{
                         background: approved ? 'rgba(96,176,128,0.15)' : absent ? 'rgba(224,112,96,0.1)' : 'rgba(192,160,96,0.1)',
                         border: `1px solid ${approved ? 'rgba(96,176,128,0.5)' : absent ? 'rgba(224,112,96,0.4)' : 'rgba(192,160,96,0.3)'}`,
-                        color: approved ? '#60b080' : absent ? '#e07060' : '#c0a060',
-                        borderRadius:8, padding:'5px 11px', fontSize:13, fontWeight:700, cursor:'pointer',
+                        color, borderRadius:8, padding:'5px 11px', cursor:'pointer',
+                        display:'flex', flexDirection:'column', alignItems:'center', gap:1,
                       }}>
-                        {d.getMonth() + 1}/{d.getDate()}{timeLabel}
+                        <span style={{ fontSize:13, fontWeight:700 }}>{d.getMonth() + 1}/{d.getDate()}</span>
+                        {ev.start_time && <span style={{ fontSize:10, opacity:0.8 }}>{parseInt(ev.start_time)}시</span>}
                       </button>
                     )
                   })}

@@ -139,7 +139,8 @@ export default function Dashboard() {
   useEffect(() => {
     async function initUser(session: { user: { id: string; email?: string | null } }) {
       const user = session.user
-      const admin = user.email === ADMIN_EMAIL
+      const { data: adminRow } = await supabase.from('admins').select('email').eq('email', user.email ?? '').maybeSingle()
+      const admin = !!adminRow
       setIsAdmin(admin)
       setUserEmail(user.email ?? '')
       if (!admin) {
@@ -1413,7 +1414,7 @@ function PayrollView({ userEmail }: { userEmail: string }) {
 
 // ── 어드민: 관리 ──────────────────────────────────────────────
 
-type ManageTab = 'instructors' | 'students' | 'assignments' | 'groups' | 'rates'
+type ManageTab = 'instructors' | 'students' | 'assignments' | 'groups' | 'rates' | 'admins'
 
 function ManageView() {
   const [subTab, setSubTab] = useState<ManageTab>('instructors')
@@ -1423,6 +1424,7 @@ function ManageView() {
     { id:'assignments', label:'배정' },
     { id:'groups',      label:'단체' },
     { id:'rates',       label:'단가' },
+    { id:'admins',      label:'관리자' },
   ]
   return (
     <div style={{ padding:'18px 16px' }}>
@@ -1443,6 +1445,7 @@ function ManageView() {
       {subTab === 'assignments'  && <AssignmentsManage />}
       {subTab === 'groups'       && <GroupsManage />}
       {subTab === 'rates'        && <RatesManage />}
+      {subTab === 'admins'       && <AdminsManage />}
     </div>
   )
 }
@@ -2168,6 +2171,73 @@ function RatesManage() {
         ))}
       </div>
       {saving && <div style={{ textAlign:'center', fontSize:11, color:'#888', marginTop:8 }}>저장 중...</div>}
+    </div>
+  )
+}
+
+// ── 관리자 관리 ───────────────────────────────────────────────
+
+function AdminsManage() {
+  const [admins, setAdmins]   = useState<string[]>([])
+  const [loading, setLoading] = useState(true)
+  const [email, setEmail]     = useState('')
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase.from('admins').select('email').order('email')
+    setAdmins((data ?? []).map((r: { email: string }) => r.email))
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function addAdmin() {
+    const e = email.trim().toLowerCase()
+    if (!e) return
+    if (admins.includes(e)) { setError('이미 등록된 이메일이에요'); return }
+    setSaving(true); setError('')
+    await supabase.from('admins').insert({ email: e })
+    setEmail('')
+    await load()
+    setSaving(false)
+  }
+
+  async function removeAdmin(e: string) {
+    if (admins.length <= 1) { setError('관리자는 최소 1명 이상 있어야 해요'); return }
+    await supabase.from('admins').delete().eq('email', e)
+    await load()
+  }
+
+  if (loading) return <Spinner />
+
+  return (
+    <div>
+      <div style={{ fontSize:12, color:'#666', marginBottom:16 }}>등록된 이메일로 로그인하면 관리자 권한이 부여돼요.</div>
+      <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+        <input
+          value={email}
+          onChange={e => { setEmail(e.target.value); setError('') }}
+          onKeyDown={e => { if (e.key === 'Enter') addAdmin() }}
+          style={{ ...inputStyle, flex:1 }}
+          placeholder="추가할 이메일"
+        />
+        <button onClick={addAdmin} disabled={saving} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'9px 16px', fontSize:13, fontWeight:700, cursor:'pointer', flexShrink:0 }}>
+          추가
+        </button>
+      </div>
+      {error && <div style={{ fontSize:12, color:'#e07060', marginBottom:12 }}>{error}</div>}
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {admins.map(e => (
+          <div key={e} style={{ background:'#141416', borderRadius:10, border:'1px solid #222', padding:'12px 14px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <span style={{ fontSize:14 }}>{e}</span>
+            <button onClick={() => removeAdmin(e)} style={{ background:'#1e1e22', border:'1px solid #333', color:'#e07060', borderRadius:7, padding:'5px 11px', fontSize:12, cursor:'pointer' }}>
+              삭제
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

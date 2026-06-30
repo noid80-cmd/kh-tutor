@@ -449,6 +449,7 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
     if (kind === 'individual' && !studentId) { setError('학생을 선택해주세요'); return }
     if (kind === 'group' && !groupName) { setError('수업을 선택해주세요'); return }
     if (content.trim().length < 50) { setError(`수업 내용을 50자 이상 작성해주세요 (현재 ${content.trim().length}자)`); return }
+    if (nextGoal.trim().length < 5) { setError('다음 목표를 5자 이상 입력해주세요'); return }
     setSubmitting(true); setError('')
     const { error: err } = await supabase.from('evaluations').insert({
       instructor_id: instructorId, date, start_time: startTime || null, lesson_type: kind === 'group' ? '단체' : lessonType,
@@ -547,7 +548,7 @@ function AddEvalModal({ instructorId, onClose, onDone }: { instructorId: string;
               style={{ background:'#1a1a1c', border:`1px solid ${content.trim().length >= 50 ? '#3a5a3a' : '#333'}`, color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
           </div>
           <FormField label="다음 목표">
-            <textarea value={nextGoal} onChange={e => setNextGoal(e.target.value)} placeholder="다음 수업 목표 (선택)" rows={2}
+            <textarea value={nextGoal} onChange={e => setNextGoal(e.target.value)} placeholder="다음 수업 목표" rows={2}
               style={{ background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
           </FormField>
           {error && <div style={{ color:'#e07060', fontSize:12 }}>{error}</div>}
@@ -577,6 +578,7 @@ function EditEvalModal({ eval: ev, onClose, onDone }: { eval: Evaluation; onClos
 
   async function submit() {
     if (content.trim().length < 50) { setError(`수업 내용을 50자 이상 작성해주세요 (현재 ${content.trim().length}자)`); return }
+    if (nextGoal.trim().length < 5) { setError('다음 목표를 5자 이상 입력해주세요'); return }
     setSubmitting(true); setError('')
     const { error: err } = await supabase.from('evaluations').update({
       date, start_time: startTime || null,
@@ -627,7 +629,7 @@ function EditEvalModal({ eval: ev, onClose, onDone }: { eval: Evaluation; onClos
           style={{ background:'#1a1a1c', border:`1px solid ${content.trim().length >= 50 ? '#3a5a3a' : '#333'}`, color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
       </div>
       <FormField label="다음 목표">
-        <textarea value={nextGoal} onChange={e => setNextGoal(e.target.value)} placeholder="다음 수업 목표 (선택)" rows={2}
+        <textarea value={nextGoal} onChange={e => setNextGoal(e.target.value)} placeholder="다음 수업 목표" rows={2}
           style={{ background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%', boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
       </FormField>
       {error && <div style={{ color:'#e07060', fontSize:12 }}>{error}</div>}

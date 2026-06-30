@@ -161,13 +161,13 @@ export default function Dashboard() {
       setLoading(false)
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'INITIAL_SESSION') {
-        if (!session) { router.push('/login'); return }
-        initUser(session)
-      } else if (event === 'SIGNED_OUT') {
-        router.push('/login')
-      }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) { router.push('/login'); return }
+      initUser(session)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') router.push('/login')
     })
     return () => subscription.unsubscribe()
   }, [router])

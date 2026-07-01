@@ -126,6 +126,60 @@ function SaveButton({ onClick, loading }: { onClick: () => void; loading: boolea
   )
 }
 
+function DateShortInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const mmRef = useRef<HTMLInputElement>(null)
+  const ddRef = useRef<HTMLInputElement>(null)
+  const yy = value ? value.slice(2, 4) : ''
+  const mm = value ? value.slice(5, 7) : ''
+  const dd = value ? value.slice(8, 10) : ''
+
+  function update(newYY: string, newMM: string, newDD: string) {
+    if (newYY.length === 2 && newMM.length === 2 && newDD.length === 2) {
+      onChange(`20${newYY}-${newMM}-${newDD}`)
+    } else if (newYY === '' && newMM === '' && newDD === '') {
+      onChange('')
+    }
+  }
+
+  const cell: React.CSSProperties = {
+    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(212,168,67,0.2)',
+    borderRadius: 10, color: '#fff', fontSize: 16, textAlign: 'center',
+    outline: 'none', padding: '14px 0', width: '100%',
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 6, alignItems: 'center' }}>
+      <div style={{ position: 'relative' }}>
+        <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'#666', fontSize:13, pointerEvents:'none' }}>20</span>
+        <input
+          inputMode="numeric" maxLength={2} placeholder="YY" value={yy}
+          style={{ ...cell, paddingLeft: 30 }}
+          onChange={e => {
+            const v = e.target.value.replace(/\D/g, '').slice(0, 2)
+            update(v, mm, dd)
+            if (v.length === 2) mmRef.current?.focus()
+          }}
+        />
+      </div>
+      <input ref={mmRef} inputMode="numeric" maxLength={2} placeholder="MM" value={mm}
+        style={cell}
+        onChange={e => {
+          const v = e.target.value.replace(/\D/g, '').slice(0, 2)
+          update(yy, v, dd)
+          if (v.length === 2) ddRef.current?.focus()
+        }}
+      />
+      <input ref={ddRef} inputMode="numeric" maxLength={2} placeholder="DD" value={dd}
+        style={cell}
+        onChange={e => {
+          const v = e.target.value.replace(/\D/g, '').slice(0, 2)
+          update(yy, mm, v)
+        }}
+      />
+    </div>
+  )
+}
+
 // ── 메인 대시보드 ─────────────────────────────────────────────
 
 export default function Dashboard() {
@@ -2006,7 +2060,7 @@ function AssignmentsManage() {
             </select>
           </FormField>
           <FormField label="등록일 (28일 기준)">
-            <input type="date" value={form.enrolled_at} onChange={e => setForm(f=>({...f,enrolled_at:e.target.value}))} style={inputStyle} />
+            <DateShortInput value={form.enrolled_at} onChange={v => setForm(f=>({...f,enrolled_at:v}))} />
           </FormField>
           <SaveButton onClick={save} loading={saving} />
         </BottomSheet>

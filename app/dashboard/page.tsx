@@ -143,17 +143,17 @@ function DateShortInput({ value, onChange }: { value: string; onChange: (v: stri
 
   const cell: React.CSSProperties = {
     background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(212,168,67,0.2)',
-    borderRadius: 10, color: '#fff', fontSize: 16, textAlign: 'center',
-    outline: 'none', padding: '14px 0', width: '100%',
+    borderRadius: 8, color: '#fff', fontSize: 14, textAlign: 'center',
+    outline: 'none', padding: '8px 4px', width: '100%',
   }
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 6, alignItems: 'center' }}>
       <div style={{ position: 'relative' }}>
-        <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'#666', fontSize:13, pointerEvents:'none' }}>20</span>
+        <span style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', color:'#666', fontSize:13, pointerEvents:'none' }}>20</span>
         <input
           inputMode="numeric" maxLength={2} placeholder="YY" value={yy}
-          style={{ ...cell, paddingLeft: 30 }}
+          style={{ ...cell, paddingLeft: 26 }}
           onChange={e => {
             const v = e.target.value.replace(/\D/g, '').slice(0, 2)
             update(v, mm, dd)

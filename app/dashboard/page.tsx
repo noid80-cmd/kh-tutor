@@ -93,10 +93,10 @@ const selectStyle: React.CSSProperties = {
   background:'#1a1a1c', border:'1px solid #333', color:'#e8e4d8', borderRadius:7, padding:'9px 10px', fontSize:13, width:'100%',
 }
 
-function BottomSheet({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function BottomSheet({ title, onClose, children, maxWidth }: { title: string; onClose: () => void; children: React.ReactNode; maxWidth?: number }) {
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:'20px 16px' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:'#141416', borderRadius:16, padding:'20px 16px 28px', maxHeight:'85vh', overflowY:'auto', width:'100%' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:'#141416', borderRadius:16, padding:'20px 16px 28px', maxHeight:'85vh', overflowY:'auto', width:'100%', maxWidth: maxWidth ?? '100%' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
           <div style={{ fontSize:16, fontWeight:800 }}>{title}</div>
           <button onClick={onClose} style={{ background:'none', border:'none', color:'#888', fontSize:22, cursor:'pointer', lineHeight:1 }}>×</button>
@@ -2041,7 +2041,7 @@ function AssignmentsManage() {
         {assignments.length === 0 && <div style={{ color:'#555', fontSize:13, textAlign:'center', padding:'30px 0' }}>배정 없음</div>}
       </div>
       {showForm && (
-        <BottomSheet title={editing ? '배정 수정' : '배정 추가'} onClose={() => { setShowForm(false); setEditing(null) }}>
+        <BottomSheet title={editing ? '배정 수정' : '배정 추가'} onClose={() => { setShowForm(false); setEditing(null) }} maxWidth={360}>
           <FormField label="강사 *">
             <select value={form.instructor_id} onChange={e => setForm(f=>({...f,instructor_id:e.target.value}))} style={selectStyle}>
               <option value="">선택</option>

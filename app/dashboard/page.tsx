@@ -1995,9 +1995,11 @@ function AssignmentsManage() {
       enrolled_at: form.enrolled_at || null, is_active: true,
     }
     if (editing) {
-      await supabase.from('assignments').update(payload).eq('id', editing.id)
+      const { error } = await supabase.from('assignments').update(payload).eq('id', editing.id)
+      if (error) { alert('수정 실패: ' + error.message); setSaving(false); return }
     } else {
-      await supabase.from('assignments').insert(payload)
+      const { error } = await supabase.from('assignments').insert(payload)
+      if (error) { alert('저장 실패: ' + error.message); setSaving(false); return }
     }
     setForm({ instructor_id:'', student_id:'', lesson_type:'전공', enrolled_at:'' })
     setEditing(null)

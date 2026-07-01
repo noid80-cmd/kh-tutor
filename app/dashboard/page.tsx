@@ -2059,7 +2059,7 @@ function AssignmentsManage() {
               {(['전공','오디션','부전공','전문반','취미','댄스'] as LessonType[]).map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </FormField>
-          <FormField label="등록일 (28일 기준)">
+          <FormField label="등록일">
             <DateShortInput value={form.enrolled_at} onChange={v => setForm(f=>({...f,enrolled_at:v}))} />
           </FormField>
           <SaveButton onClick={save} loading={saving} />

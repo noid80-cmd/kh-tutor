@@ -2041,7 +2041,7 @@ function AssignmentsManage() {
         {assignments.length === 0 && <div style={{ color:'#555', fontSize:13, textAlign:'center', padding:'30px 0' }}>배정 없음</div>}
       </div>
       {showForm && (
-        <BottomSheet title={editing ? '배정 수정' : '배정 추가'} onClose={() => { setShowForm(false); setEditing(null) }} maxWidth={700}>
+        <BottomSheet title={editing ? '배정 수정' : '배정 추가'} onClose={() => { setShowForm(false); setEditing(null) }} maxWidth={undefined}>
           <FormField label="강사 *">
             <select value={form.instructor_id} onChange={e => setForm(f=>({...f,instructor_id:e.target.value}))} style={selectStyle}>
               <option value="">선택</option>

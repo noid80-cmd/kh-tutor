@@ -146,12 +146,12 @@ function DateShortInput({ value, onChange }: { value: string; onChange: (v: stri
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 6, alignItems: 'center' }}>
-      <div style={{ position: 'relative' }}>
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <div style={{ position: 'relative', width: 90 }}>
         <span style={{ position:'absolute', left:8, top:'50%', transform:'translateY(-50%)', color:'#666', fontSize:13, pointerEvents:'none' }}>20</span>
         <input
           inputMode="numeric" maxLength={2} placeholder="YY" value={yy}
-          style={{ ...cell, paddingLeft: 26 }}
+          style={{ ...cell, paddingLeft: 26, width: 90 }}
           onChange={e => {
             const v = e.target.value.replace(/\D/g, '').slice(0, 2)
             setYY(v); emit(v, mm, dd)
@@ -160,7 +160,7 @@ function DateShortInput({ value, onChange }: { value: string; onChange: (v: stri
         />
       </div>
       <input ref={mmRef} inputMode="numeric" maxLength={2} placeholder="MM" value={mm}
-        style={cell}
+        style={{ ...cell, width: 64 }}
         onChange={e => {
           const v = e.target.value.replace(/\D/g, '').slice(0, 2)
           setMM(v); emit(yy, v, dd)
@@ -168,7 +168,7 @@ function DateShortInput({ value, onChange }: { value: string; onChange: (v: stri
         }}
       />
       <input ref={ddRef} inputMode="numeric" maxLength={2} placeholder="DD" value={dd}
-        style={cell}
+        style={{ ...cell, width: 64 }}
         onChange={e => {
           const v = e.target.value.replace(/\D/g, '').slice(0, 2)
           setDD(v); emit(yy, mm, v)

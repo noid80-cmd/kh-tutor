@@ -1907,7 +1907,7 @@ function AssignmentsManage() {
   const [loading, setLoading]         = useState(true)
   const [showForm, setShowForm]       = useState(false)
   const [editing, setEditing]         = useState<any>(null)
-  const [form, setForm] = useState({ instructor_id:'', student_id:'', lesson_type:'전공' as LessonType, day_of_week:'', start_time:'', enrolled_at:'' })
+  const [form, setForm] = useState({ instructor_id:'', student_id:'', lesson_type:'전공' as LessonType, enrolled_at:'' })
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
@@ -1929,8 +1929,7 @@ function AssignmentsManage() {
     setEditing(a)
     setForm({
       instructor_id: a.instructor_id, student_id: a.student_id, lesson_type: a.lesson_type,
-      day_of_week: a.day_of_week != null ? String(a.day_of_week) : '',
-      start_time: a.start_time ?? '', enrolled_at: a.enrolled_at ?? '',
+      enrolled_at: a.enrolled_at ?? '',
     })
     setShowForm(true)
   }
@@ -1941,15 +1940,14 @@ function AssignmentsManage() {
     setSaving(true)
     const payload = {
       instructor_id: form.instructor_id, student_id: form.student_id, lesson_type: form.lesson_type,
-      day_of_week: form.day_of_week !== '' ? parseInt(form.day_of_week) : null,
-      start_time: form.start_time || null, enrolled_at: form.enrolled_at || null,
+      enrolled_at: form.enrolled_at || null,
     }
     if (editing) {
       await supabase.from('assignments').update(payload).eq('id', editing.id)
     } else {
       await supabase.from('assignments').insert(payload)
     }
-    setForm({ instructor_id:'', student_id:'', lesson_type:'전공', day_of_week:'', start_time:'', enrolled_at:'' })
+    setForm({ instructor_id:'', student_id:'', lesson_type:'전공', enrolled_at:'' })
     setEditing(null)
     await load(); setSaving(false); setShowForm(false)
   }
@@ -1964,7 +1962,7 @@ function AssignmentsManage() {
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
-        <button onClick={() => { setEditing(null); setForm({ instructor_id:'', student_id:'', lesson_type:'전공', day_of_week:'', start_time:'', enrolled_at:'' }); setShowForm(true) }} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 배정 추가</button>
+        <button onClick={() => { setEditing(null); setForm({ instructor_id:'', student_id:'', lesson_type:'전공', enrolled_at:'' }); setShowForm(true) }} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 배정 추가</button>
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
         {assignments.map((a: any) => (
@@ -1977,8 +1975,6 @@ function AssignmentsManage() {
               </div>
               <div style={{ fontSize:11, color:'#888' }}>
                 {a.lesson_type}
-                {a.day_of_week != null && <span style={{ marginLeft:6 }}>{DAYS[a.day_of_week]}</span>}
-                {a.start_time && <span style={{ marginLeft:4 }}>{a.start_time.slice(0,5)}</span>}
                 {a.enrolled_at && <span style={{ marginLeft:6, color:'#555' }}>등록 {a.enrolled_at}</span>}
               </div>
             </div>
@@ -2008,15 +2004,6 @@ function AssignmentsManage() {
             <select value={form.lesson_type} onChange={e => setForm(f=>({...f,lesson_type:e.target.value as LessonType}))} style={selectStyle}>
               {(['전공','오디션','부전공','전문반','취미','댄스'] as LessonType[]).map(t => <option key={t} value={t}>{t}</option>)}
             </select>
-          </FormField>
-          <FormField label="요일">
-            <select value={form.day_of_week} onChange={e => setForm(f=>({...f,day_of_week:e.target.value}))} style={selectStyle}>
-              <option value="">미정</option>
-              {DAYS.map((d, i) => <option key={i} value={String(i)}>{d}요일</option>)}
-            </select>
-          </FormField>
-          <FormField label="시작 시간">
-            <input type="time" value={form.start_time} onChange={e => setForm(f=>({...f,start_time:e.target.value}))} style={inputStyle} />
           </FormField>
           <FormField label="등록일 (28일 기준)">
             <input type="date" value={form.enrolled_at} onChange={e => setForm(f=>({...f,enrolled_at:e.target.value}))} style={inputStyle} />

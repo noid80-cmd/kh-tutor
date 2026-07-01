@@ -1992,7 +1992,7 @@ function AssignmentsManage() {
     setSaving(true)
     const payload = {
       instructor_id: form.instructor_id, student_id: form.student_id, lesson_type: form.lesson_type,
-      enrolled_at: form.enrolled_at || null,
+      enrolled_at: form.enrolled_at || null, is_active: true,
     }
     if (editing) {
       await supabase.from('assignments').update(payload).eq('id', editing.id)

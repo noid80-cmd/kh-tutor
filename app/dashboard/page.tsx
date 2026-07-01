@@ -129,15 +129,13 @@ function SaveButton({ onClick, loading }: { onClick: () => void; loading: boolea
 function DateShortInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const mmRef = useRef<HTMLInputElement>(null)
   const ddRef = useRef<HTMLInputElement>(null)
-  const yy = value ? value.slice(2, 4) : ''
-  const mm = value ? value.slice(5, 7) : ''
-  const dd = value ? value.slice(8, 10) : ''
+  const [yy, setYY] = useState(value ? value.slice(2, 4) : '')
+  const [mm, setMM] = useState(value ? value.slice(5, 7) : '')
+  const [dd, setDD] = useState(value ? value.slice(8, 10) : '')
 
-  function update(newYY: string, newMM: string, newDD: string) {
+  function emit(newYY: string, newMM: string, newDD: string) {
     if (newYY.length === 2 && newMM.length === 2 && newDD.length === 2) {
       onChange(`20${newYY}-${newMM}-${newDD}`)
-    } else if (newYY === '' && newMM === '' && newDD === '') {
-      onChange('')
     }
   }
 
@@ -156,7 +154,7 @@ function DateShortInput({ value, onChange }: { value: string; onChange: (v: stri
           style={{ ...cell, paddingLeft: 26 }}
           onChange={e => {
             const v = e.target.value.replace(/\D/g, '').slice(0, 2)
-            update(v, mm, dd)
+            setYY(v); emit(v, mm, dd)
             if (v.length === 2) mmRef.current?.focus()
           }}
         />
@@ -165,7 +163,7 @@ function DateShortInput({ value, onChange }: { value: string; onChange: (v: stri
         style={cell}
         onChange={e => {
           const v = e.target.value.replace(/\D/g, '').slice(0, 2)
-          update(yy, v, dd)
+          setMM(v); emit(yy, v, dd)
           if (v.length === 2) ddRef.current?.focus()
         }}
       />
@@ -173,7 +171,7 @@ function DateShortInput({ value, onChange }: { value: string; onChange: (v: stri
         style={cell}
         onChange={e => {
           const v = e.target.value.replace(/\D/g, '').slice(0, 2)
-          update(yy, mm, v)
+          setDD(v); emit(yy, mm, v)
         }}
       />
     </div>

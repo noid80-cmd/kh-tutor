@@ -2077,7 +2077,7 @@ function GroupsManage() {
   const [loading, setLoading]         = useState(true)
   const [showForm, setShowForm]       = useState(false)
   const [editingGroup, setEditingGroup] = useState<any>(null)
-  const [form, setForm] = useState({ name:'', instructor_id:'', day_of_week:'', start_time:'' })
+  const [form, setForm] = useState({ name:'', instructor_id:'' })
   const [saving, setSaving]           = useState(false)
 
   const load = useCallback(async () => {
@@ -2095,11 +2095,7 @@ function GroupsManage() {
 
   function openEditGroup(g: any) {
     setEditingGroup(g)
-    setForm({
-      name: g.name, instructor_id: g.instructor_id,
-      day_of_week: g.day_of_week != null ? String(g.day_of_week) : '',
-      start_time: g.start_time ?? '',
-    })
+    setForm({ name: g.name, instructor_id: g.instructor_id })
     setShowForm(true)
   }
 
@@ -2107,17 +2103,13 @@ function GroupsManage() {
     if (!form.name.trim()) { alert('수업명을 입력해주세요'); return }
     if (!form.instructor_id) { alert('강사를 선택해주세요'); return }
     setSaving(true)
-    const payload = {
-      name: form.name, instructor_id: form.instructor_id,
-      day_of_week: form.day_of_week !== '' ? parseInt(form.day_of_week) : null,
-      start_time: form.start_time || null,
-    }
+    const payload = { name: form.name, instructor_id: form.instructor_id }
     if (editingGroup) {
       await supabase.from('group_classes').update(payload).eq('id', editingGroup.id)
     } else {
       await supabase.from('group_classes').insert(payload)
     }
-    setForm({ name:'', instructor_id:'', day_of_week:'', start_time:'' })
+    setForm({ name:'', instructor_id:'' })
     setEditingGroup(null)
     await load(); setSaving(false); setShowForm(false)
   }
@@ -2132,7 +2124,7 @@ function GroupsManage() {
   return (
     <div>
       <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
-        <button onClick={() => { setEditingGroup(null); setForm({ name:'', instructor_id:'', day_of_week:'', start_time:'' }); setShowForm(true) }} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 단체수업 추가</button>
+        <button onClick={() => { setEditingGroup(null); setForm({ name:'', instructor_id:'' }); setShowForm(true) }} style={{ background:'#c0a060', color:'#111', border:'none', borderRadius:8, padding:'7px 14px', fontSize:13, fontWeight:700, cursor:'pointer' }}>+ 단체수업 추가</button>
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
         {groups.map((g: any) => (
@@ -2141,8 +2133,6 @@ function GroupsManage() {
               <div style={{ fontSize:14, fontWeight:700 }}>{g.name}</div>
               <div style={{ fontSize:11, color:'#888', marginTop:1 }}>
                 [{g.instructor?.grade}] {g.instructor?.name}
-                {g.day_of_week != null && <span style={{ marginLeft:6 }}>{DAYS[g.day_of_week]}</span>}
-                {g.start_time && <span style={{ marginLeft:4 }}>{g.start_time.slice(0,5)}</span>}
               </div>
             </div>
             <div style={{ display:'flex', gap:6 }}>
@@ -2155,21 +2145,12 @@ function GroupsManage() {
       </div>
       {showForm && (
         <BottomSheet title={editingGroup ? '단체수업 수정' : '단체수업 추가'} onClose={() => { setShowForm(false); setEditingGroup(null) }}>
-          <FormField label="수업명 *"><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="예: 초등 앙상블" /></FormField>
+          <FormField label="수업명 *"><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} style={inputStyle} placeholder="예: 음악통론" /></FormField>
           <FormField label="강사 *">
             <select value={form.instructor_id} onChange={e => setForm(f=>({...f,instructor_id:e.target.value}))} style={selectStyle}>
               <option value="">선택</option>
               {instructors.map(i => <option key={i.id} value={i.id}>[{i.grade}] {i.name}</option>)}
             </select>
-          </FormField>
-          <FormField label="요일">
-            <select value={form.day_of_week} onChange={e => setForm(f=>({...f,day_of_week:e.target.value}))} style={selectStyle}>
-              <option value="">미정</option>
-              {DAYS.map((d, i) => <option key={i} value={String(i)}>{d}요일</option>)}
-            </select>
-          </FormField>
-          <FormField label="시작 시간">
-            <input type="time" value={form.start_time} onChange={e => setForm(f=>({...f,start_time:e.target.value}))} style={inputStyle} />
           </FormField>
           <SaveButton onClick={saveGroup} loading={saving} />
         </BottomSheet>

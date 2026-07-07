@@ -17,7 +17,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <a href="https://www.khmusic.co.kr" target="_blank" rel="noopener noreferrer"
+          style={{ position: 'fixed', bottom: 10, left: '50%', transform: 'translateX(-50%)',
+            fontSize: 11, color: 'rgba(212,168,67,0.35)', letterSpacing: '0.05em',
+            textDecoration: 'none', zIndex: 9999, whiteSpace: 'nowrap' }}>
+          by KH Music
+        </a>
+      </body>
     </html>
   )
 }

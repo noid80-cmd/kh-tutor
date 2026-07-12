@@ -20,10 +20,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {children}
         <a href="https://www.khmusic.co.kr" target="_blank" rel="noopener noreferrer"
-          style={{ position: 'fixed', bottom: 10, left: '50%', transform: 'translateX(-50%)',
-            fontSize: 13, color: 'rgba(212,168,67,0.6)', letterSpacing: '0.05em',
-            textDecoration: 'underline', textUnderlineOffset: 3, zIndex: 9999, whiteSpace: 'nowrap' }}>
-          by KH Music
+          style={{ position: 'fixed', bottom: 0, left: 0, right: 0, textAlign: 'center',
+            padding: '8px 0 10px', background: 'rgba(15,12,8,0.88)', backdropFilter: 'blur(8px)',
+            fontSize: 11, fontWeight: 600, color: 'rgba(212,168,67,0.7)', letterSpacing: '0.15em',
+            textDecoration: 'none', zIndex: 9999, whiteSpace: 'nowrap' }}>
+          by KHMUSIC
         </a>
       </body>
     </html>
